@@ -29,6 +29,30 @@ export function createServer(app) {
     next();
   });
 
+  // Админка может лежать на другом поддомене (Vercel): разрешаем только origin из ADMIN_ORIGIN.
+  // Изменяющие запросы с чужого origin отклоняем — защита от CSRF с соседних поддоменов.
+  const allowedOrigins = new Set(config.admin.allowedOrigins);
+  server.use((req, res, next) => {
+    res.vary('Origin');
+    const origin = req.headers.origin;
+    if (!origin) return next();
+    const sameOrigin = origin === `${req.protocol}://${req.get('host')}`;
+    if (allowedOrigins.has(origin)) {
+      res.set({ 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Credentials': 'true' });
+      if (req.method === 'OPTIONS') {
+        res.set({
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH',
+          'Access-Control-Allow-Headers': 'Content-Type',
+          'Access-Control-Max-Age': '600',
+        });
+        return res.sendStatus(204);
+      }
+    } else if (!sameOrigin && !['GET', 'HEAD'].includes(req.method)) {
+      return res.status(403).json({ error: 'Запрос с чужого сайта отклонён' });
+    }
+    next();
+  });
+
   // Проверка, что сервер жив (для деплоя и мониторинга). Без авторизации и без данных.
   server.get('/healthz', (req, res) => res.json({ ok: true }));
 

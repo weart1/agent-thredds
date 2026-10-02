@@ -7,7 +7,7 @@ dotenv.config({ quiet: true });
 // MOCK=1 — режим разработки: фейковые Threads и Claude, ключи не нужны
 export const MOCK = process.env.MOCK === '1';
 
-const MOCK_DEFAULTS = { ADMIN_PASSWORD: 'mock-password', THREADS_ACCESS_TOKEN: 'mock', ANTHROPIC_API_KEY: 'mock' };
+const MOCK_DEFAULTS = { ADMIN_PASSWORD: 'mock-password', THREADS_ACCESS_TOKEN: 'mock', RUNWARE_API_KEY: 'mock', ANTHROPIC_API_KEY: 'mock' };
 
 const required = (key) => {
   const v = process.env[key] || (MOCK ? MOCK_DEFAULTS[key] : undefined);
@@ -17,6 +17,16 @@ const required = (key) => {
 const readFile = (rel) => fs.readFileSync(new URL(rel, import.meta.url), 'utf8');
 
 const password = required('ADMIN_PASSWORD');
+
+// Модели для текста: Runware (по умолчанию) или напрямую Claude API.
+// Если AI_PROVIDER не задан: есть ANTHROPIC_API_KEY без RUNWARE_API_KEY → anthropic, иначе runware.
+const provider = (process.env.AI_PROVIDER ||
+  (process.env.ANTHROPIC_API_KEY && !process.env.RUNWARE_API_KEY ? 'anthropic' : 'runware')).toLowerCase();
+if (!['runware', 'anthropic'].includes(provider)) throw new Error('AI_PROVIDER должен быть runware или anthropic');
+const MODEL_DEFAULTS = {
+  runware: { filter: 'anthropic:claude@haiku-4.5', draft: 'anthropic:claude@sonnet-4.6' },
+  anthropic: { filter: 'claude-haiku-4-5-20251001', draft: 'claude-sonnet-5-5' },
+};
 if (password.length < 10) throw new Error('ADMIN_PASSWORD должен быть не короче 10 символов');
 
 export const config = {
@@ -26,6 +36,9 @@ export const config = {
     // Без SESSION_SECRET сессии сбрасываются при каждом перезапуске
     sessionSecret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
     cookieSecure: process.env.COOKIE_SECURE === 'true',
+    // Откуда разрешено открывать админку, если она лежит отдельно (Vercel).
+    // Например: https://agent.weartstudio.io (несколько — через запятую)
+    allowedOrigins: (process.env.ADMIN_ORIGIN || '').split(',').map((s) => s.trim().replace(/\/$/, '')).filter(Boolean),
   },
   threads: {
     appId: process.env.THREADS_APP_ID,
@@ -33,10 +46,12 @@ export const config = {
     initialToken: required('THREADS_ACCESS_TOKEN'),
     apiBase: 'https://graph.threads.net/v1.0',
   },
-  anthropic: {
-    apiKey: required('ANTHROPIC_API_KEY'),
-    filterModel: process.env.FILTER_MODEL || 'claude-haiku-4-5-20251001',
-    draftModel: process.env.DRAFT_MODEL || 'claude-sonnet-5-5',
+  ai: {
+    provider,
+    apiKey: required(provider === 'runware' ? 'RUNWARE_API_KEY' : 'ANTHROPIC_API_KEY'),
+    baseUrl: process.env.RUNWARE_BASE_URL || 'https://api.runware.ai/v1',
+    filterModel: process.env.FILTER_MODEL || MODEL_DEFAULTS[provider].filter,
+    draftModel: process.env.DRAFT_MODEL || MODEL_DEFAULTS[provider].draft,
   },
   schedule: {
     search: process.env.SEARCH_CRON || '0 */3 * * *',

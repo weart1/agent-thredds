@@ -1,8 +1,8 @@
 # Агент WeArt Studio для Threads
 
 Node.js-сервис: по расписанию ищет в Threads посты, где люди ищут AI-инструменты,
-оценивает их через Claude, пишет ответы с упоминанием WeArt Studio и показывает их
-в веб-админке на одобрение. Подробности для пользователя: @README.md
+оценивает их нейросетью (через Runware), пишет ответы с упоминанием WeArt Studio и показывает их
+в веб-админке на одобрение. Админка лежит на Vercel, агент с API — на VPS (DigitalOcean). Подробности для пользователя: @README.md
 
 ## Команды
 
@@ -11,6 +11,7 @@ Node.js-сервис: по расписанию ищет в Threads посты, 
 - `npm test` — тесты (node:test, всё на моках, сеть не нужна).
 - `npm run check` — проверка синтаксиса всех файлов.
 - `npm run report` — сводка по реальной работе агента; `npm run report -- --mock` — по mock-базе.
+- `API_URL=https://... npm run build:web` — сборка админки для Vercel в `dist/` (Vercel делает это сам).
 - `npm start` — боевой режим с настоящими ключами из .env. Публикует в Threads по-настоящему.
 
 После любых изменений кода запускай `npm run check && npm test`.
@@ -19,12 +20,15 @@ Node.js-сервис: по расписанию ищет в Threads посты, 
 
 - `src/index.js` — сборка приложения, cron-расписание. Объект `app` передаётся во все модули.
 - `src/pipeline.js` — логика: поиск → фильтр → оценка → черновики; `publish()` с лимитами.
-- `src/ai.js` — вызовы Claude (Haiku фильтрует, Sonnet пишет), промпты, `enforceBrand()`.
+- `src/ai.js` — вызовы модели: дешёвая фильтрует, сильная пишет; промпты, `enforceBrand()`.
+  Провайдер по умолчанию Runware (OpenAI-совместимый `/v1/chat/completions` с tools), запасной — Claude API (`AI_PROVIDER=anthropic`).
 - `src/threads.js` — клиент официального Threads API (graph.threads.net).
 - `src/server.js` — Express: вход по паролю (подписанная cookie), REST API, SSE `/api/events`.
+  CORS только для origin из `ADMIN_ORIGIN`; изменяющие запросы с чужих origin получают 403.
 - `src/store.js` — всё состояние в одном JSON-файле `data/db.json`.
 - `src/mock.js` — фейковые Threads и Claude для `MOCK=1` и тестов.
-- `public/` — админка: чистый JS без сборки и фреймворков.
+- `public/` — админка: чистый JS без фреймворков. Адрес API берётся из `public/config.js` (`window.API_BASE`, пусто — тот же сервер).
+  `scripts/build-web.js` копирует её в `dist/`, прописывает `API_URL` и CSP для Vercel (`vercel.json`).
 - `keywords.json`, `product.md` — только начальные значения при первом запуске.
   Дальше ключевые слова, описание продукта, ссылка и лимиты живут в `data/db.json`
   и редактируются в админке (раздел «Настройки»).
@@ -42,7 +46,7 @@ Node.js-сервис: по расписанию ищет в Threads посты, 
 - Админка: весь пользовательский текст только через `textContent` (хелпер `h()` в `public/app.js`), никакого `innerHTML` с данными.
   CSP запрещает inline-скрипты и атрибуты `style` — стили через классы или `el.style` (CSSOM).
 - Интерфейс и тексты на русском, кратко и по делу.
-- Новые зависимости — только если без них никак. Сейчас: express, @anthropic-ai/sdk, node-cron, dotenv.
+- Новые зависимости — только если без них никак. Сейчас: express, @anthropic-ai/sdk, node-cron, dotenv. Runware вызывается через встроенный `fetch`.
 - Сохраняй защиту от бана: дневной лимит ответов, пауза для автора, один черновик на автора, ссылка не всегда.
 
 ## Ограничения Threads API
@@ -55,4 +59,8 @@ Node.js-сервис: по расписанию ищет в Threads посты, 
 
 ## Деплой
 
-VPS + pm2 + Caddy (https). Детали сервера пользователь хранит в `CLAUDE.local.md`. Команда `/deploy`.
+- Агент и API: VPS DigitalOcean + pm2 + Caddy (https), поддомен API, например `api-agent.weartstudio.io`. Команда `/deploy`.
+- Админка: Vercel, сам собирает из GitHub при пуше (`vercel.json`, переменная `API_URL`), поддомен `agent.weartstudio.io`.
+- Админка и API должны быть поддоменами одного домена, иначе браузер не отправит cookie сессии.
+
+Детали сервера пользователь хранит в `CLAUDE.local.md`.

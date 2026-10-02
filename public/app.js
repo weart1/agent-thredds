@@ -66,12 +66,15 @@ function toast(text, kind = '') {
   setTimeout(() => el.remove(), kind === 'error' ? 7000 : 3500);
 }
 
+// Адрес API. Пусто — тот же сайт; на Vercel задаётся при сборке в config.js
+const API_BASE = String(window.API_BASE || '').replace(/\/$/, '');
+
 async function api(path, { method = 'GET', body } = {}) {
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(`${API_BASE}/api${path}`, {
     method,
     headers: body ? { 'Content-Type': 'application/json' } : {},
     body: body ? JSON.stringify(body) : undefined,
-    credentials: 'same-origin',
+    credentials: 'include',
   });
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && path !== '/login') {
@@ -570,7 +573,7 @@ async function renderSettings() {
 // ── Живые обновления ────────────────────────────────────────────
 function connectEvents() {
   state.events?.close();
-  const es = new EventSource('/api/events');
+  const es = new EventSource(`${API_BASE}/api/events`, { withCredentials: true });
   state.events = es;
   es.addEventListener('stats', (m) => { state.stats = JSON.parse(m.data); renderStatus(); });
   es.addEventListener('activity', (m) => {

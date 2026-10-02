@@ -13,6 +13,7 @@
     "dev:mock": "MOCK=1 node --watch src/index.js",
     "test": "node --test test/*.test.js",
     "report": "node scripts/report.js",
+    "build:web": "node scripts/build-web.js",
     "check": "for f in src/*.js public/app.js scripts/*.js; do node --check \"$f\" || exit 1; done && echo \"Синтаксис ок\""
   },
   "dependencies": {

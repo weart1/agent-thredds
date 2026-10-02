@@ -3,7 +3,7 @@
 > Пошаговый план запуска — что подключать и в каком порядке: [PLAN.md](PLAN.md)
 
 Агент по расписанию ищет в Threads посты, где люди ищут AI-инструменты для картинок, видео,
-музыки и т.п. Claude оценивает каждый пост, по лучшим пишет ответ: сначала полезный совет,
+музыки и т.п. Нейросеть (через Runware) оценивает каждый пост, по лучшим пишет ответ: сначала полезный совет,
 потом честное упоминание WeArt Studio. Всё это видно в админке на вашем сайте.
 
 ## Что есть в админке
@@ -58,8 +58,9 @@
 - Node.js 20 или новее
 - Публичный аккаунт Threads, от имени которого будут ответы
 - Аккаунт разработчика Meta (developers.facebook.com)
-- Ключ Claude API (console.anthropic.com)
-- Сервер и домен (например, agent.weartstudio.io)
+- Ключ Runware API (my.runware.ai) — через него работают модели для оценки и текстов
+- VPS (DigitalOcean) для агента и API, Vercel для админки
+- Два поддомена одного домена: `api-agent.weartstudio.io` (VPS) и `agent.weartstudio.io` (Vercel)
 
 ## 1. Приложение Meta и токен Threads
 
@@ -85,7 +86,8 @@
 
 ## 2. Остальное в .env
 
-- `ANTHROPIC_API_KEY` — ключ с console.anthropic.com.
+- `RUNWARE_API_KEY` — ключ с my.runware.ai. Модели задаются в `FILTER_MODEL` и `DRAFT_MODEL`.
+- `ADMIN_ORIGIN` — адрес админки на Vercel, например `https://agent.weartstudio.io`.
 - `ADMIN_PASSWORD` — пароль для входа в админку, минимум 10 символов.
 - `SESSION_SECRET` — случайная строка:
   `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
@@ -113,13 +115,21 @@ pm2 save && pm2 startup
 Направьте домен на IP сервера и создайте `/etc/caddy/Caddyfile`:
 
 ```
-agent.weartstudio.io {
+api-agent.weartstudio.io {
     reverse_proxy localhost:3000
 }
 ```
 
 Затем `sudo systemctl reload caddy` и в `.env` поставьте `COOKIE_SECURE=true`, после чего
 `pm2 restart threads-agent`.
+
+В `.env` на сервере укажите `ADMIN_ORIGIN=https://agent.weartstudio.io`.
+
+### Админка на Vercel
+
+Импортируйте репозиторий в Vercel (настройки сборки уже в `vercel.json`), добавьте переменную
+`API_URL=https://api-agent.weartstudio.io` и подключите домен `agent.weartstudio.io`.
+Подробно — в [PLAN.md](PLAN.md).
 
 Railway или Render тоже подойдут, но подключите постоянный диск для папки `data/`,
 иначе после перезапуска пропадут история и настройки.

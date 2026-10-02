@@ -20,7 +20,7 @@ if (MOCK) {
   const { createMockThreads, createMockAI } = await import('./mock.js');
   app.threads = createMockThreads();
   app.ai = createMockAI();
-  console.log('⚠️  MOCK-режим: Threads и Claude подменены, в Threads ничего не публикуется. Пароль: mock-password');
+  console.log('⚠️  MOCK-режим: Threads и нейросеть подменены, в Threads ничего не публикуется. Пароль: mock-password');
 } else {
   app.threads = new ThreadsClient(app.store, config.threads);
   app.ai = createAI(config, () => app.store.settings);

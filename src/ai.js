@@ -77,10 +77,10 @@ ${productInfo}
 7. Не выдумывай цены, бесплатный доступ и функции, которых нет в описании. Не принижай конкурентов.
 8. Если ответ будет выглядеть навязчиво или пост не подходит — skip=true.`;
 
-export function createAI(config, getSettings) {
-  const client = new Anthropic({ apiKey: config.anthropic.apiKey });
-
-  async function callTool({ model, system, user, tool, maxTokens = 2000 }) {
+/** Вызов модели через Claude API напрямую. Возвращает аргументы инструмента. */
+function anthropicCaller(cfg) {
+  const client = new Anthropic({ apiKey: cfg.apiKey });
+  return async ({ model, system, user, tool, maxTokens }) => {
     const res = await client.messages.create({
       model,
       max_tokens: maxTokens,
@@ -92,7 +92,45 @@ export function createAI(config, getSettings) {
     const block = res.content.find((b) => b.type === 'tool_use');
     if (!block) throw new Error('Модель не вернула структурированный ответ');
     return block.input;
-  }
+  };
+}
+
+/** Вызов модели через Runware (OpenAI-совместимый /chat/completions). Возвращает аргументы инструмента. */
+function runwareCaller(cfg, fetchFn) {
+  return async ({ model, system, user, tool, maxTokens }) => {
+    const res = await fetchFn(`${cfg.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        max_tokens: maxTokens,
+        messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+        tools: [{ type: 'function', function: { name: tool.name, description: tool.description, parameters: tool.input_schema } }],
+        tool_choice: { type: 'function', function: { name: tool.name } },
+      }),
+      signal: AbortSignal.timeout(120_000),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json.error || json.errors?.length) {
+      const msg = json.error?.message || json.errors?.[0]?.message || `HTTP ${res.status}`;
+      throw new Error(`Runware (${model}): ${msg}`);
+    }
+    const message = json.choices?.[0]?.message;
+    const call = message?.tool_calls?.find((c) => c.function?.name === tool.name) || message?.tool_calls?.[0];
+    const raw = call?.function?.arguments ?? String(message?.content || '').match(/\{[\s\S]*\}/)?.[0];
+    if (!raw) throw new Error('Модель не вернула структурированный ответ');
+    if (typeof raw === 'object') return raw;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      throw new Error('Модель вернула некорректный JSON');
+    }
+  };
+}
+
+export function createAI(config, getSettings, { fetch: fetchFn = fetch } = {}) {
+  const cfg = config.ai;
+  const callTool = cfg.provider === 'anthropic' ? anthropicCaller(cfg) : runwareCaller(cfg, fetchFn);
 
   /** Оценивает посты пачками по 20 штук дешёвой моделью. */
   async function filterPosts(posts) {
@@ -103,7 +141,7 @@ export function createAI(config, getSettings) {
         .map((p) => `<post id="${p.id}">\n${String(p.text).slice(0, 800)}\n</post>`)
         .join('\n\n');
       const r = await callTool({
-        model: config.anthropic.filterModel,
+        model: cfg.filterModel,
         system: FILTER_SYSTEM,
         user,
         tool: FILTER_TOOL,
@@ -127,7 +165,7 @@ export function createAI(config, getSettings) {
     const { productInfo, productUrl } = getSettings();
     for (let attempt = 0; attempt < 2; attempt++) {
       const r = await callTool({
-        model: config.anthropic.draftModel,
+        model: cfg.draftModel,
         system: draftSystem(productInfo, productUrl),
         user,
         tool: DRAFT_TOOL,

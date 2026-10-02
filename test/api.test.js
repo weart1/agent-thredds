@@ -4,6 +4,7 @@ import { EventEmitter } from 'node:events';
 import { mockEnv } from './helpers.js';
 
 mockEnv();
+process.env.ADMIN_ORIGIN = 'https://agent.example.com';
 const { config } = await import('../src/config.js');
 const { Store } = await import('../src/store.js');
 const { createPipeline } = await import('../src/pipeline.js');
@@ -68,4 +69,18 @@ test('настройки проверяются', async () => {
   assert.equal((await call('/settings', { method: 'PUT', body: { productUrl: 'http://x.com' } })).status, 400);
   const ok = await call('/settings', { method: 'PUT', body: { keywords: 'a\nb\na' } });
   assert.deepEqual(ok.data.keywords, ['a', 'b']);
+});
+
+test('CORS: админка с разрешённого поддомена, чужие сайты отклоняются', async () => {
+  const pre = await fetch(`${base}/drafts/x`, { method: 'OPTIONS', headers: { Origin: 'https://agent.example.com' } });
+  assert.equal(pre.status, 204);
+  assert.equal(pre.headers.get('access-control-allow-origin'), 'https://agent.example.com');
+  assert.equal(pre.headers.get('access-control-allow-credentials'), 'true');
+
+  const evil = await fetch(`${base}/pause`, { method: 'POST', headers: { Origin: 'https://evil.example.com', cookie } });
+  assert.equal(evil.status, 403);
+  assert.equal(evil.headers.get('access-control-allow-origin'), null);
+
+  const ok = await fetch(`${base}/stats`, { headers: { Origin: 'https://agent.example.com', cookie } });
+  assert.equal(ok.status, 200);
 });

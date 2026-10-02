@@ -2,4 +2,5 @@
 
 - Сервер для деплоя: user@1.2.3.4
 - Папка на сервере: /home/user/threads-agent
-- Домен админки: https://agent.weartstudio.io
+- Домен API (VPS): https://api-agent.weartstudio.io
+- Домен админки (Vercel): https://agent.weartstudio.io

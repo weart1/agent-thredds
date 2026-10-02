@@ -5,28 +5,48 @@
 
 ---
 
-## 0. Что уже есть и в каком состоянии
+## 0. Что уже есть и как всё устроено
 
-Проект загружен в репозиторий `weart1/agent-thredds`, ветка `claude/busy-bell-bsyexa`.
+Код лежит в `weart1/agent-thredds`, ветка `claude/busy-bell-bsyexa`.
+Проверено: `npm run check` ок, `npm test` 15 из 15, mock-режим работает, в том числе
+вариант «админка на одном адресе, API на другом» в настоящем браузере.
 
-Что проверено:
+### Схема
 
-| Проверка | Результат |
-|---|---|
-| `npm ci` (установка зависимостей) | ок, Node 22 |
-| `npm run check` (синтаксис) | ок |
-| `npm test` (12 тестов) | все проходят |
-| `npm run dev:mock` (запуск без ключей) | агент нашёл 30 тестовых постов, оценил 8, создал 5 черновиков |
+```
+                 ┌──────────────────────────────┐
+  Вы (браузер) ──▶  agent.weartstudio.io          │  Vercel: только страница админки
+                 │  (index.html, app.js, css)    │  (3 статичных файла)
+                 └──────────────┬───────────────┘
+                                │ запросы /api/... с cookie сессии
+                                ▼
+                 ┌──────────────────────────────┐
+                 │  api-agent.weartstudio.io     │  VPS DigitalOcean:
+                 │  Caddy (https) → Node :3000   │  агент + API + база data/db.json
+                 └──────┬───────────────┬───────┘
+                        │               │
+                        ▼               ▼
+               Threads API (Meta)   Runware API
+               поиск, публикация    модели для оценки постов и текстов ответов
+```
 
-**Как он работает, в двух словах:**
+**Почему так, а не всё на Vercel:** агенту нужен процесс, который работает постоянно
+(расписание каждые 3 часа и 15 минут), файл базы и долгое соединение для живой ленты.
+На Vercel этого нет, поэтому агент на VPS, а на Vercel только страница админки.
+
+**Важно про домены:** админка и API должны быть **поддоменами одного домена**
+(`agent.weartstudio.io` и `api-agent.weartstudio.io`). Тогда браузер считает их «одним сайтом»
+и отправляет cookie входа. Если открыть админку на `*.vercel.app`, вход работать не будет.
+
+### Как работает агент
 
 ```
 каждые 3 часа (SEARCH_CRON)
   → берёт следующие 6 ключевых слов по кругу
   → ищет посты в Threads (официальный API, 1 запрос = 1 из 500 в неделю)
   → отсеивает: уже виденные, свои, старше 48 ч, авторов, которым уже отвечали
-  → Claude Haiku ставит каждому посту оценку 0–10
-  → посты с оценкой ≥ 7 (не больше 8 за прогон) → Claude Sonnet пишет ответ
+  → дешёвая модель через Runware ставит каждому посту оценку 0–10
+  → посты с оценкой ≥ 7 (не больше 8 за прогон) → сильная модель пишет ответ
   → ответ попадает в «Очередь» в админке
   → ВЫ нажимаете «Отправить» → ответ публикуется в Threads
 
@@ -34,28 +54,26 @@
   → проверяет, кто упомянул ваш аккаунт → черновик ответа в очередь
 ```
 
-Сам агент без вас ничего не публикует. Исключение — настройка «Автоответ на упоминания»,
-по умолчанию она выключена.
+Сам агент без вас ничего не публикует (кроме настройки «Автоответ на упоминания», по умолчанию выключена).
 
 ---
 
 ## 1. Что нужно подключить (сводка)
 
-| # | Что | Зачем | Где | Стоимость |
-|---|---|---|---|---|
-| 1 | **Node.js 20+** | на нём работает агент | nodejs.org (локально), NodeSource (на сервере) | бесплатно |
-| 2 | **Ключ Claude API** | оценка постов и написание ответов | console.anthropic.com | оплата за токены, см. шаг 2 |
-| 3 | **Аккаунт Threads** (публичный) | от его имени уходят ответы | приложение Threads | бесплатно |
-| 4 | **Приложение Meta** с Threads API | доступ к поиску, упоминаниям и публикации | developers.facebook.com | бесплатно |
-| 5 | **App Review в Meta** для `threads_keyword_search` | без него поиск видит только ваши посты | кабинет приложения Meta | бесплатно, занимает дни или недели |
-| 6 | **VPS-сервер** | чтобы агент работал круглосуточно | Hetzner, DigitalOcean, Timeweb и т.п. | ~5 $/€ в месяц |
-| 7 | **Домен / поддомен** | адрес админки, например `agent.weartstudio.io` | DNS-панель вашего домена | уже есть |
-| 8 | **Caddy** | https для админки (сертификат сам) | ставится на сервер | бесплатно |
-| 9 | **Резервные копии** `data/db.json` | вся история и настройки в одном файле | cron на сервере | бесплатно |
-| 10 | **Веб-аналитика с UTM** | видеть, сколько людей пришло из Threads | ваша аналитика сайта (GA4, PostHog, Метрика) | уже есть |
+| # | Что | Зачем | Где |
+|---|---|---|---|
+| 1 | **Runware API** | модели для оценки постов и написания ответов | my.runware.ai |
+| 2 | **Аккаунт Threads** (публичный) | от его имени уходят ответы | приложение Threads |
+| 3 | **Приложение Meta** с Threads API | поиск, упоминания, публикация | developers.facebook.com |
+| 4 | **App Review** для `threads_keyword_search` | без него поиск видит только ваши посты | кабинет приложения Meta |
+| 5 | **VPS DigitalOcean** (уже есть) | агент и API круглосуточно | cloud.digitalocean.com |
+| 6 | **Vercel** | страница админки | vercel.com |
+| 7 | **2 DNS-записи** | `api-agent` → VPS, `agent` → Vercel | DNS-панель weartstudio.io |
+| 8 | **Caddy** на VPS | https для API (сертификат сам) | ставится на VPS |
+| 9 | **Резервные копии** `data/db.json` | история, настройки, токен | cron на VPS + снапшоты DO |
+| 10 | **Веб-аналитика с UTM** | сколько людей пришло из Threads | ваша аналитика сайта |
 
-Порядок важен: **App Review (п. 5) подавайте как можно раньше**, потому что это самая долгая часть.
-Пока Meta проверяет, можно всё остальное настроить и обкатать на упоминаниях.
+**App Review (п. 4) подавайте первым делом**: это самая долгая часть.
 
 ---
 
@@ -84,22 +102,38 @@ npm run dev:mock
 
 ---
 
-## 3. Шаг 2 — ключ Claude API
+## 3. Шаг 2 — ключ Runware
 
-1. Зайдите на **console.anthropic.com**, зарегистрируйтесь или войдите.
-2. **Billing** → пополните баланс (для начала хватит небольшой суммы).
-3. **Limits** → поставьте месячный лимит расходов. Это защита, если что-то пойдёт не так.
-4. **API Keys** → *Create Key* → назовите `threads-agent` → скопируйте ключ (`sk-ant-...`).
-   Ключ показывается один раз.
+1. Войдите на **my.runware.ai** (или зарегистрируйтесь).
+2. Пополните баланс. Runware берёт оплату за каждый запрос, цены моделей в каталоге.
+3. **API Keys** → создайте ключ, назовите `threads-agent`, скопируйте его. Он пойдёт в `RUNWARE_API_KEY`.
+4. В каталоге **runware.ai/models** найдите две текстовые модели и скопируйте их ID
+   (формат `автор:семейство@версия`):
+   - **для оценки постов** (`FILTER_MODEL`): быстрая и дешёвая. По умолчанию стоит
+     `anthropic:claude@haiku-4.5`.
+   - **для текстов ответов** (`DRAFT_MODEL`): сильная, хорошо пишет по-русски и по-английски.
+     По умолчанию стоит `anthropic:claude@sonnet-4.6`.
 
-Какие модели используются (меняются в `.env`):
-- `FILTER_MODEL=claude-haiku-4-5-20251001` — дешёвая и быстрая, оценивает посты пачками по 20.
-- `DRAFT_MODEL=claude-sonnet-5-5` — пишет ответы, только для лучших постов.
+   > Я не смог проверить точные ID в каталоге Runware из этой сессии. Сверьте их с каталогом.
+   > Если ID неверный, в ленте агента будет ошибка `Runware (имя_модели): ...`.
 
-**Сколько это стоит.** Примерный объём при настройках по умолчанию: 8 прогонов в сутки,
-до 8 черновиков за прогон. Это до ~64 коротких ответов Sonnet и несколько вызовов Haiku в сутки,
-каждый по 1–2 тыс. токенов. Получается немного, но точную цену смотрите на странице
-Pricing в консоли и в разделе **Usage** после первых дней работы.
+**Требование к модели:** агент получает ответ через «вызов инструмента» (tool calling),
+так он гарантированно получает оценку и текст в нужном формате. Выбирайте модели, у которых
+в каталоге Runware указана поддержка tools / function calling.
+
+**Как проверить, что ключ и модели работают**, до запуска агента (подставьте ключ и ID):
+
+```bash
+curl -s https://api.runware.ai/v1/chat/completions \
+  -H "Authorization: Bearer ВАШ_КЛЮЧ" -H "Content-Type: application/json" \
+  -d '{"model":"anthropic:claude@haiku-4.5","messages":[{"role":"user","content":"Скажи привет"}],"max_tokens":50}'
+```
+
+В ответе должен быть текст в `choices[0].message.content`. Если там ошибка, она скажет, что не так:
+ключ, баланс или модель.
+
+**Запасной вариант:** агент умеет работать и напрямую с Claude API.
+Для этого в `.env`: `AI_PROVIDER=anthropic`, `ANTHROPIC_API_KEY=...`, строки `FILTER_MODEL`/`DRAFT_MODEL` удалить.
 
 ---
 
@@ -217,17 +251,18 @@ cp .env.example .env   # если ещё не сделали
 | `PORT` | `3000` (оставить) |
 | `ADMIN_PASSWORD` | длинный пароль, минимум 10 символов (лучше 20+) |
 | `SESSION_SECRET` | результат `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
-| `COOKIE_SECURE` | `false` локально, **`true` на сервере** с https |
+| `COOKIE_SECURE` | `false` локально, **`true` на сервере** |
+| `ADMIN_ORIGIN` | пусто локально; **на сервере `https://agent.weartstudio.io`** (адрес админки на Vercel) |
 | `THREADS_APP_ID` | из шага 4.6 |
 | `THREADS_APP_SECRET` | из шага 4.6 |
 | `THREADS_ACCESS_TOKEN` | долгоживущий токен из шага 4.7 |
-| `ANTHROPIC_API_KEY` | ключ из шага 2 |
-| `FILTER_MODEL`, `DRAFT_MODEL` | оставить по умолчанию |
-| `SEARCH_CRON` | `0 */3 * * *` = каждые 3 часа (8 раз × 6 слов = 48 поисков в сутки, ~336 в неделю при лимите 450) |
+| `RUNWARE_API_KEY` | ключ из шага 2 |
+| `FILTER_MODEL`, `DRAFT_MODEL` | ID моделей Runware из шага 2 |
+| `SEARCH_CRON` | `0 */3 * * *` = каждые 3 часа (8 × 6 слов = 48 поисков в сутки, ~336 в неделю при лимите 450) |
 | `MENTIONS_CRON` | `*/15 * * * *` = каждые 15 минут |
 
-Если поставите поиск чаще, агент сам остановится при достижении недельного лимита (450 из 500).
-Но тогда поиск будет простаивать до конца недели. Считайте: `прогонов в сутки × keywordsPerRun × 7 ≤ 450`.
+Правило для расписания: `прогонов в сутки × keywordsPerRun × 7 ≤ 450`. Иначе поиск будет
+простаивать до конца недели.
 
 ---
 
@@ -253,36 +288,39 @@ npm start
 
 ---
 
-## 8. Шаг 7 — сервер (VPS)
+## 8. Шаг 7 — агент на VPS DigitalOcean
 
-### 8.1. Купить сервер
+### 8.1. Проверить droplet
 
-- Hetzner (CX22), DigitalOcean (Basic 1 GB), Timeweb Cloud и т.п.: 1 vCPU, 1–2 GB RAM, Ubuntu 24.04.
-- При создании добавьте свой SSH-ключ (`ssh-keygen -t ed25519`, публичная часть `~/.ssh/id_ed25519.pub`).
+В **cloud.digitalocean.com → Droplets** посмотрите:
+- ОС: Ubuntu 22.04 или 24.04 (если другая, команды ниже могут отличаться);
+- память: хватит 1 GB; если на droplet уже крутятся другие сервисы, проверьте, что порт 80/443 не занят
+  (`sudo ss -tlnp | grep -E ':80|:443'`). Если занят nginx, см. примечание в 8.7;
+- IP-адрес (понадобится для DNS).
 
-### 8.2. Базовая настройка
+Включите **Backups** в настройках droplet (платно, ~20% от цены): это ежедневная копия всего сервера.
+
+### 8.2. Базовая настройка (если droplet новый)
 
 ```bash
 ssh root@IP_СЕРВЕРА
-
-# Отдельный пользователь вместо root
 adduser agent
 usermod -aG sudo agent
 rsync --archive --chown=agent:agent ~/.ssh /home/agent
 
-# Файрвол: наружу открыты только SSH и https. Порт 3000 НЕ открываем.
+# Файрвол: наружу только SSH и https. Порт 3000 НЕ открываем.
 ufw allow OpenSSH
 ufw allow 80
 ufw allow 443
 ufw enable
-
-# Обновления
 apt update && apt upgrade -y
 exit
 ```
 
-Порт 3000 должен быть закрыт файрволом. Админка должна открываться только через Caddy (https).
-Иначе пароль будет передаваться открытым текстом, и можно будет обойти блокировку подбора пароля.
+Можно вместо `ufw` (или вместе с ним) создать **Cloud Firewall** в панели DigitalOcean:
+Networking → Firewalls → входящие 22, 80, 443.
+
+Порт 3000 должен быть закрыт: к API ходят только через Caddy (https).
 
 ### 8.3. Node.js 22 и pm2
 
@@ -296,89 +334,115 @@ sudo npm install -g pm2
 
 ### 8.4. Код на сервере
 
-**Вариант А (рекомендуется): через Claude Code командой `/deploy`.** Она проверяет тесты
-и копирует код через rsync без `.env`, `data/` и `node_modules`. Перед этим создайте папку на сервере:
-```bash
-mkdir -p /home/agent/threads-agent
-```
-и заполните `CLAUDE.local.md` (см. раздел 11).
+**Вариант А (рекомендуется): `/deploy` в Claude Code.** Тесты → rsync без `.env`, `data/`, `node_modules` → перезапуск.
+Создайте папку `mkdir -p /home/agent/threads-agent` и заполните `CLAUDE.local.md` (раздел 11).
 
-**Вариант Б: вручную через git.** Репозиторий приватный, поэтому нужен deploy key:
+**Вариант Б: git с deploy key.**
 ```bash
 ssh-keygen -t ed25519 -f ~/.ssh/github_deploy -N ""
 cat ~/.ssh/github_deploy.pub
 # GitHub → weart1/agent-thredds → Settings → Deploy keys → Add (только чтение)
-GIT_SSH_COMMAND="ssh -i ~/.ssh/github_deploy" git clone git@github.com:weart1/agent-thredds.git threads-agent
+GIT_SSH_COMMAND="ssh -i ~/.ssh/github_deploy" git clone -b main git@github.com:weart1/agent-thredds.git threads-agent
 cd threads-agent && npm ci --omit=dev
 ```
+(Пока нет ветки `main`, используйте `-b claude/busy-bell-bsyexa`.)
 
 ### 8.5. `.env` на сервере
 
-Секреты создаются на сервере вручную, в git их нет:
 ```bash
 cd /home/agent/threads-agent
-nano .env          # содержимое как локально, но COOKIE_SECURE=true
+nano .env
 chmod 600 .env
 ```
+Обязательно на сервере: `COOKIE_SECURE=true`, `ADMIN_ORIGIN=https://agent.weartstudio.io`.
 
 ### 8.6. Запуск через pm2
 
-**Запускайте именно из папки проекта.** `.env` и `data/` ищутся относительно текущей папки.
+**Запускайте из папки проекта**: `.env` и `data/` ищутся относительно неё.
 
 ```bash
 cd /home/agent/threads-agent
 pm2 start src/index.js --name threads-agent
 pm2 save
-pm2 startup        # выведет команду с sudo, скопируйте и выполните её
-pm2 install pm2-logrotate   # чтобы логи не заняли весь диск
+pm2 startup                 # выведет команду с sudo — выполните её
+pm2 install pm2-logrotate   # чтобы логи не заняли диск
+pm2 logs threads-agent --lines 30   # должно быть «Агент запущен, аккаунт @...»
 ```
 
-Полезные команды:
-```bash
-pm2 status
-pm2 logs threads-agent --lines 50
-pm2 restart threads-agent
-```
+### 8.7. Поддомен API и https (Caddy)
 
-### 8.7. Домен и https (Caddy)
-
-1. В DNS вашего домена создайте запись **A**: `agent` → `IP_СЕРВЕРА`.
-   Проверка: `ping agent.weartstudio.io` показывает IP сервера (иногда это занимает до часа).
-2. Установите Caddy:
+1. DNS weartstudio.io: запись **A** `api-agent` → IP droplet.
+   (Если DNS у DigitalOcean: Networking → Domains.) Проверка: `ping api-agent.weartstudio.io`.
+2. Caddy:
    ```bash
    sudo apt install -y caddy
    sudo nano /etc/caddy/Caddyfile
    ```
-   Содержимое:
    ```
-   agent.weartstudio.io {
+   api-agent.weartstudio.io {
        reverse_proxy localhost:3000
    }
    ```
-3. `sudo systemctl reload caddy`. Caddy сам получит сертификат Let's Encrypt.
-4. Проверьте: `curl -s https://agent.weartstudio.io/healthz` → `{"ok":true}`.
-5. Откройте https://agent.weartstudio.io и войдите.
+   `sudo systemctl reload caddy`
+3. Проверка: `curl -s https://api-agent.weartstudio.io/healthz` → `{"ok":true}`.
+
+> Если на droplet уже стоит nginx на 80/443, Caddy не нужен: добавьте в nginx server-блок
+> для `api-agent.weartstudio.io` с `proxy_pass http://127.0.0.1:3000;`,
+> `proxy_buffering off;` (для живой ленты), `proxy_read_timeout 1h;`, заголовками
+> `X-Forwarded-For` / `X-Forwarded-Proto` и сертификатом через certbot.
 
 ### 8.8. Резервные копии
 
-Вся история, настройки и продлённый токен хранятся в `data/db.json`. Ежедневная копия:
 ```bash
 mkdir -p /home/agent/backups
 crontab -e
-# добавить строку:
 15 3 * * * cp /home/agent/threads-agent/data/db.json /home/agent/backups/db-$(date +\%F).json && find /home/agent/backups -name 'db-*.json' -mtime +30 -delete
 ```
-Раз в неделю-две скачивайте копию к себе: `scp agent@IP:/home/agent/backups/db-ДАТА.json .`
-Файл содержит токен Threads, храните его как пароль.
+Файл содержит токен Threads, храните копии как пароль.
 
 ### 8.9. Мониторинг (по желанию)
 
-Подключите бесплатный UptimeRobot или Better Stack на `https://agent.weartstudio.io/healthz`,
-чтобы получать письмо, если агент упал.
+UptimeRobot / Better Stack на `https://api-agent.weartstudio.io/healthz`, или Monitoring в DigitalOcean.
 
 ---
 
-## 9. Шаг 8 — первые недели работы
+## 8б. Шаг 8 — админка на Vercel
+
+Настройки сборки уже лежат в репозитории (`vercel.json`): Vercel копирует `public/` в `dist/`,
+вписывает адрес API и правила безопасности. Зависимости не ставятся, сборка занимает секунды.
+
+1. **vercel.com → Add New → Project → Import** репозиторий `weart1/agent-thredds`.
+   Если его нет в списке: *Adjust GitHub App Permissions* и дайте Vercel доступ к репозиторию.
+2. **Framework Preset: Other.** Остальные поля не трогайте, всё возьмётся из `vercel.json`.
+3. **Environment Variables** → добавить:
+   `API_URL` = `https://api-agent.weartstudio.io` (для Production и Preview).
+4. **Deploy.** Если сборка упала с «Не задана переменная API_URL», переменная не добавлена (шаг 3).
+5. **Settings → Domains → Add** `agent.weartstudio.io`. Vercel покажет DNS-запись,
+   обычно **CNAME** `agent` → `cname.vercel-dns.com`. Добавьте её у регистратора домена.
+6. **Production Branch** (Settings → Git): после появления `main` укажите `main`.
+   Пока production-ветка `claude/busy-bell-bsyexa`.
+7. Откройте https://agent.weartstudio.io и войдите паролем из `.env` сервера.
+
+**Проверка, что всё связалось:**
+- Вход проходит, в шапке видно `@ваш_аккаунт` → админка видит API.
+- «Найти посты сейчас» → в «Что делает агент» строки появляются сами → живая лента работает.
+
+**Если вход не проходит:**
+- «Нужно войти» сразу после ввода пароля → админка открыта не на поддомене weartstudio.io
+  (например, на `*.vercel.app`) или на сервере `COOKIE_SECURE` не `true`.
+- В консоли браузера (F12) ошибка CORS → `ADMIN_ORIGIN` на сервере не совпадает с адресом админки
+  (точно, с `https://`, без `/` в конце). После правки `.env`: `pm2 restart threads-agent`.
+- «Запрос с чужого сайта отклонён» → то же самое: `ADMIN_ORIGIN`.
+
+Preview-сборки Vercel (адреса `*.vercel.app` для каждой ветки) будут открываться, но войти в них
+нельзя. Так и задумано: админка работает только на вашем домене.
+
+Админка по-прежнему доступна и прямо на API-домене (https://api-agent.weartstudio.io).
+Это запасной вход, если с Vercel что-то случится.
+
+---
+
+## 9. Шаг 9 — первые недели работы
 
 ### Прогрев аккаунта
 
@@ -429,10 +493,13 @@ crontab -e
 | Поиск находит 0 постов или только ваши | нет App Review для `threads_keyword_search` | шаг 5 |
 | `Недельный лимит поисковых запросов Meta исчерпан` | слишком частый `SEARCH_CRON` или много `keywordsPerRun` | уменьшить; лимит восстанавливается скользящим окном 7 дней |
 | `Достигнут лимит N ответов за 24 часа` | сработал дневной лимит | подождать или поднять в настройках (осторожно) |
-| Ошибки `Claude` / `401` / `credit balance` | ключ Anthropic или закончился баланс | проверить ключ и баланс в консоли |
+| `Runware (модель): ...` в ленте | неверный ключ, кончился баланс или неверный ID модели | проверить ключ и баланс на my.runware.ai, ID модели в каталоге; тест через curl из шага 2 |
+| `Модель не вернула структурированный ответ` | выбранная модель не поддерживает tools | выбрать модель с поддержкой function calling |
+| Админка на Vercel: вход не проходит / ошибка CORS | `ADMIN_ORIGIN`, `COOKIE_SECURE` или домен не того сайта | см. раздел 8б |
 | После входа сразу снова просит пароль на сервере | `COOKIE_SECURE=true`, а открыто по http | открывать по https |
 | Сессии сбрасываются после каждого перезапуска | не задан `SESSION_SECRET` | задать в `.env` |
-| `https://...` не открывается | DNS ещё не обновился или Caddy не запущен | `ping домен`, `sudo systemctl status caddy` |
+| `https://api-agent...` не открывается | DNS ещё не обновился или Caddy не запущен | `ping домен`, `sudo systemctl status caddy` |
+| Сборка на Vercel падает | не задан `API_URL` | Settings → Environment Variables |
 | Агент не стартует после перезагрузки сервера | не выполнен `pm2 startup` | выполнить и `pm2 save` |
 
 ---
@@ -445,11 +512,13 @@ crontab -e
    ```
    - Сервер для деплоя: agent@IP_СЕРВЕРА
    - Папка на сервере: /home/agent/threads-agent
-   - Домен админки: https://agent.weartstudio.io
+   - Домен API (VPS): https://api-agent.weartstudio.io
+   - Домен админки (Vercel): https://agent.weartstudio.io
    ```
    Этот файл не попадает в git.
 3. Готовые команды:
    - `/deploy` — тесты → показ изменений → копирование на сервер → перезапуск → проверка `/healthz`.
+     Админку на Vercel выкладывать не нужно: Vercel пересобирает её сам при каждом пуше в GitHub.
    - `/agent-report` — разбор реальной работы агента и рекомендации.
 4. Защита уже настроена в `.claude/settings.json`: Claude Code не читает `.env` и `data/`,
    а `npm start`, `ssh` и `rsync` выполняет только после вашего подтверждения.
@@ -490,19 +559,20 @@ crontab -e
 ## 13. Итоговый чек-лист
 
 - [ ] Посмотрел админку в `npm run dev:mock`
-- [ ] Ключ Claude API создан, лимит расходов выставлен
+- [ ] Ключ Runware создан, баланс пополнен, ID двух моделей проверены (curl из шага 2)
 - [ ] Аккаунт Threads публичный, оформлен, есть свои посты, включена 2FA
 - [ ] Приложение Meta создано, 5 разрешений включены
 - [ ] Аккаунт добавлен как Threads Tester, приглашение принято
 - [ ] **App Review на `threads_keyword_search` подан**
 - [ ] Политика конфиденциальности и страница удаления данных на сайте
 - [ ] Долгоживущий токен получен (`npm run token`)
-- [ ] `.env` заполнен, `npm start` → «Агент запущен, аккаунт @...»
+- [ ] `.env` заполнен, локально `npm start` → «Агент запущен, аккаунт @...»
 - [ ] Один ответ вручную отправлен и виден в Threads
-- [ ] VPS куплен, файрвол настроен (22, 80, 443)
-- [ ] Node 22 и pm2 установлены, агент запущен, `pm2 startup` выполнен
-- [ ] DNS-запись создана, Caddy настроен, `https://.../healthz` → `{"ok":true}`
-- [ ] `COOKIE_SECURE=true` на сервере
+- [ ] Droplet: файрвол (22, 80, 443), Node 22, pm2, `pm2 startup`, Backups включены
+- [ ] DNS `api-agent` → IP droplet, Caddy, `https://api-agent.weartstudio.io/healthz` → `{"ok":true}`
+- [ ] На сервере `COOKIE_SECURE=true` и `ADMIN_ORIGIN=https://agent.weartstudio.io`
+- [ ] Vercel: проект импортирован, `API_URL` задан, домен `agent.weartstudio.io` подключён
+- [ ] Вход в админку на https://agent.weartstudio.io работает, живая лента обновляется
 - [ ] Ежедневный бэкап `data/db.json` настроен
 - [ ] Лимит ответов на первую неделю 5–10
 - [ ] Через неделю: `/agent-report` и правка ключевых слов
