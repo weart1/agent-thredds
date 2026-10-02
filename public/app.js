@@ -567,7 +567,36 @@ async function renderSettings() {
     ),
     h('div', { class: 'save-bar' }, saveBtn),
   );
-  pageEl.replaceChildren(head('Настройки', 'Изменения применяются со следующего прогона.'), form);
+
+  // Удаление данных по запросу человека (политика конфиденциальности)
+  const who = h('input', { id: 'forget', type: 'text', placeholder: '@username', autocomplete: 'off' });
+  const forgetBtn = h('button', { class: 'btn', type: 'submit' }, 'Удалить данные');
+  const forget = h('form', {
+    class: 'settings forget',
+    onsubmit: (e) => {
+      e.preventDefault();
+      const name = who.value.trim();
+      if (!name) return;
+      if (!confirm(`Удалить все данные о ${name}? Агент больше никогда не будет ему отвечать. Отменить нельзя.`)) return;
+      withBusy(forgetBtn, async () => {
+        try {
+          const r = await api('/forget', { method: 'POST', body: { username: name } });
+          who.value = '';
+          toast(`Удалено записей: ${r.removed}`);
+        } catch (x) { toast(x.message, 'error'); }
+      });
+    },
+  },
+    h('fieldset', {},
+      h('legend', {}, 'Удаление данных по запросу'),
+      h('div', { class: 'field' },
+        h('label', { for: 'forget' }, 'Имя пользователя Threads'),
+        who,
+        h('small', {}, 'Если человек попросил удалить его данные: стираются его посты, черновики и история, агент больше ему не отвечает.')),
+      h('div', {}, forgetBtn),
+    ),
+  );
+  pageEl.replaceChildren(head('Настройки', 'Изменения применяются со следующего прогона.'), form, forget);
 }
 
 // ── Живые обновления ────────────────────────────────────────────
