@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm test)",
+      "Bash(npm run check)",
+      "Bash(npm run report:*)",
+      "Bash(npm run dev:mock)",
+      "Bash(npm install)",
+      "Bash(node --check:*)"
+    ],
+    "ask": [
+      "Bash(npm start)",
+      "Bash(ssh:*)",
+      "Bash(rsync:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./data/**)",
+      "Edit(./data/**)",
+      "Edit(./.env)"
+    ]
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "weart-studio-threads-agent",
+  "version": "1.0.0",
+  "description": "Агент для Threads с веб-админкой: находит релевантные посты и готовит ответы с упоминанием WeArt Studio",
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "token": "node scripts/exchange-token.js",
+    "dev:mock": "MOCK=1 node --watch src/index.js",
+    "test": "node --test test/*.test.js",
+    "report": "node scripts/report.js",
+    "check": "for f in src/*.js public/app.js scripts/*.js; do node --check \"$f\" || exit 1; done && echo \"Синтаксис ок\""
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
+    "dotenv": "^18.0.5",
+    "express": "^5.2.1",
+    "node-cron": "^4.6.0"
+  }
+}
