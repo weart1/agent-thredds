@@ -61,8 +61,16 @@ Node.js-сервис: по расписанию ищет в Threads посты, 
 
 ## Деплой
 
-- Агент и API: VPS DigitalOcean + pm2 + Caddy (https), поддомен API, например `api-agent.weartstudio.io`. Команда `/deploy`.
-- Админка: Vercel, сам собирает из GitHub при пуше (`vercel.json`, переменная `API_URL`), поддомен `agent.weartstudio.io`.
+- Агент и API: VPS DigitalOcean, поддомен `api-agent.weartstudio.io`. Команда `/deploy`.
+  - Отдельный пользователь `agent`, код в `/home/agent/threads-agent` (git-клон, `git pull` для обновления).
+  - Node 22 через nvm только у `agent`; свой pm2 у `agent` (`pm2-agent.service`), процесс `threads-agent`.
+  - Агент слушает `127.0.0.1:3100` (`HOST`, `PORT` в `.env`), снаружи — nginx + certbot,
+    файл `/etc/nginx/sites-available/api-agent.weartstudio.io`.
+- **На этом сервере работают другие проекты пользователя** (сайт weartstudio.io, `backend.weartstudio.io`,
+  digitaldevils; pm2 у root: `platform-api`, `platform-web`, `digitaldevils`).
+  Никогда не трогай pm2 у root (`pm2 kill/stop/delete/restart` без `su - agent`), чужие конфиги nginx,
+  системный Node и файрвол. Перед любой командой на сервере сначала проверь, что она затрагивает только агента.
+- Админка: Vercel, сам собирает из GitHub при пуше в `main` (`vercel.json`, переменная `API_URL`), поддомен `agent.weartstudio.io`.
 - Админка и API должны быть поддоменами одного домена, иначе браузер не отправит cookie сессии.
 
 Детали сервера пользователь хранит в `CLAUDE.local.md`.
