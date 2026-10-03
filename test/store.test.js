@@ -30,3 +30,37 @@ test('настройки по умолчанию дополняют сохран
   assert.equal(s.settings.minScore, 5);
   assert.equal(s.settings.maxRepliesPerDay, 20);
 });
+
+test('удаление данных пользователя по запросу', () => {
+  const s = new Store(tmp(), { userCooldownDays: 30 });
+  s.data.drafts.p1 = { id: 'p1', username: 'Anna_K', status: 'sent' };
+  s.data.drafts.p2 = { id: 'p2', username: 'other', status: 'pending' };
+  s.data.scored.push({ id: 'p1', username: 'anna_k', at: Date.now() });
+  s.data.sentLog.push({ username: 'anna_k', at: Date.now() });
+  s.data.repliedUsers.anna_k = Date.now();
+  s.addActivity('sent', 'Ответ отправлен @anna_k');
+  s.addActivity('sent', 'Ответ отправлен @anna_kk');
+
+  assert.equal(s.forgetUser('@anna_k'), 5);
+  assert.deepEqual(Object.keys(s.data.drafts), ['p2']);
+  assert.equal(s.data.scored.length, 0);
+  assert.equal(s.data.activity.length, 1);
+  assert.ok(s.isBlocked('ANNA_K'));
+  assert.ok(!s.isBlocked('other'));
+  assert.ok(!JSON.stringify(s.data).includes('anna_k"'), 'имя не хранится в открытом виде');
+});
+
+test('автоочистка по срокам хранения', () => {
+  const s = new Store(tmp(), { userCooldownDays: 30, maxPostAgeHours: 48 });
+  const old = (days) => Date.now() - days * 864e5;
+  s.data.drafts.a = { id: 'a', username: 'x', status: 'sent', createdAt: old(100), sentAt: old(95) };
+  s.data.drafts.b = { id: 'b', username: 'y', status: 'sent', createdAt: old(20), sentAt: old(20) };
+  s.data.scored.push({ id: 'c', at: old(31) }, { id: 'd', at: old(1) });
+  s.data.activity.push({ text: 'old', at: old(31) });
+  s.data.repliedUsers = { x: old(91), y: old(20) };
+  s.prune();
+  assert.deepEqual(Object.keys(s.data.drafts), ['b']);
+  assert.deepEqual(s.data.scored.map((p) => p.id), ['d']);
+  assert.equal(s.data.activity.length, 0);
+  assert.deepEqual(Object.keys(s.data.repliedUsers), ['y']);
+});

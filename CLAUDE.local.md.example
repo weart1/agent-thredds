@@ -1,6 +1,6 @@
 # Локальные данные для Claude Code (скопируйте в CLAUDE.local.md, он не попадает в git)
 
-- Сервер для деплоя: user@1.2.3.4
-- Папка на сервере: /home/user/threads-agent
+- Сервер для деплоя: root@IP_СЕРВЕРА (агент работает от пользователя agent)
+- Папка на сервере: /home/agent/threads-agent
 - Домен API (VPS): https://api-agent.weartstudio.io
 - Домен админки (Vercel): https://agent.weartstudio.io

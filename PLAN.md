@@ -7,7 +7,7 @@
 
 ## 0. Что уже есть и как всё устроено
 
-Код лежит в `weart1/agent-thredds`, ветка `claude/busy-bell-bsyexa`.
+Код лежит в `weart1/agent-thredds`, основная ветка `main`.
 Проверено: `npm run check` ок, `npm test` 15 из 15, mock-режим работает, в том числе
 вариант «админка на одном адресе, API на другом» в настоящем браузере.
 
@@ -84,7 +84,6 @@
 ```bash
 git clone https://github.com/weart1/agent-thredds.git
 cd agent-thredds
-git checkout claude/busy-bell-bsyexa   # пока изменения не слиты в main
 npm install
 npm run dev:mock
 ```
@@ -345,7 +344,6 @@ cat ~/.ssh/github_deploy.pub
 GIT_SSH_COMMAND="ssh -i ~/.ssh/github_deploy" git clone -b main git@github.com:weart1/agent-thredds.git threads-agent
 cd threads-agent && npm ci --omit=dev
 ```
-(Пока нет ветки `main`, используйте `-b claude/busy-bell-bsyexa`.)
 
 ### 8.5. `.env` на сервере
 
@@ -419,8 +417,7 @@ UptimeRobot / Better Stack на `https://api-agent.weartstudio.io/healthz`, ил
 4. **Deploy.** Если сборка упала с «Не задана переменная API_URL», переменная не добавлена (шаг 3).
 5. **Settings → Domains → Add** `agent.weartstudio.io`. Vercel покажет DNS-запись,
    обычно **CNAME** `agent` → `cname.vercel-dns.com`. Добавьте её у регистратора домена.
-6. **Production Branch** (Settings → Git): после появления `main` укажите `main`.
-   Пока production-ветка `claude/busy-bell-bsyexa`.
+6. **Production Branch** (Settings → Git): `main`.
 7. Откройте https://agent.weartstudio.io и войдите паролем из `.env` сервера.
 
 **Проверка, что всё связалось:**

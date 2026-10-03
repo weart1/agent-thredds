@@ -100,6 +100,7 @@ export function createPipeline(app) {
           store.markSeen(p.id);
           if (p.username === app.me?.username) { dropped.own++; continue; }
           if (ageHours(p.timestamp) > S().maxPostAgeHours) { dropped.old++; continue; }
+          if (store.isBlocked(p.username)) { dropped.cooldown++; continue; }
           if (busyUsers.has(p.username) || !store.canReplyToUser(p.username, S().userCooldownDays)) { dropped.cooldown++; continue; }
           busyUsers.add(p.username);
           candidates.push({ ...p, keyword: kw, source: 'search' });
@@ -167,7 +168,7 @@ export function createPipeline(app) {
       if (manual || fresh.length) app.log('mention', `Проверка упоминаний: новых ${fresh.length}`);
       for (const p of fresh) {
         store.markSeen(p.id);
-        if (p.username === app.me?.username) continue;
+        if (p.username === app.me?.username || store.isBlocked(p.username)) continue;
         if (ageHours(p.timestamp) > S().maxPostAgeHours) continue;
 
         const post = { ...p, source: 'mention' };

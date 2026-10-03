@@ -253,6 +253,16 @@ export function createServer(app) {
     res.json(s);
   });
 
+  // Запрос на удаление данных: стираем всё о пользователе, имя в лог не пишем
+  api.post('/forget', (req, res) => {
+    const username = String(req.body?.username || '').replace(/^@/, '').trim();
+    if (!/^[\w.]{1,64}$/.test(username)) throw new HttpError(400, 'Укажите имя пользователя Threads, например @name');
+    const removed = store.forgetUser(username);
+    app.log('system', `Данные пользователя удалены по запросу (записей: ${removed}). Агент больше не будет ему отвечать.`);
+    app.events.emit('stats', stats());
+    res.json({ ok: true, removed });
+  });
+
   api.post('/pause', (req, res) => {
     store.data.paused = Boolean(req.body?.paused);
     store.save();

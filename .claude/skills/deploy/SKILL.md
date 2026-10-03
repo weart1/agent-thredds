@@ -10,23 +10,21 @@ disable-model-invocation: true
 спроси у пользователя и предложи сохранить их в `CLAUDE.local.md`.
 
 1. Проверка перед выкладкой: `npm run check && npm test`. Если что-то упало — остановись и сообщи.
-2. Покажи пользователю, что будет выложено (`git status` / список изменений), и получи подтверждение.
-3. Копирование кода без секретов и данных:
+2. Убедись, что изменения запушены в `main` на GitHub: сервер берёт код оттуда через `git pull`.
+   Покажи пользователю, что будет выложено, и получи подтверждение.
+3. Обновление и перезапуск — **только от пользователя agent**, pm2 у root не трогать (там другие проекты):
    ```
-   rsync -az --delete --exclude node_modules --exclude data --exclude .env \
-     --exclude CLAUDE.local.md --exclude .git ./ <сервер>:<папка>/
+   ssh <сервер> "su - agent -c 'source ~/.nvm/nvm.sh && cd ~/threads-agent && git pull --ff-only && npm ci --omit=dev && pm2 restart threads-agent && pm2 save'"
    ```
-4. Установка зависимостей и перезапуск:
-   ```
-   ssh <сервер> "cd <папка> && npm ci --omit=dev && (pm2 restart threads-agent || pm2 start src/index.js --name threads-agent) && pm2 save"
-   ```
-5. Проверка:
-   - `ssh <сервер> "pm2 logs threads-agent --lines 30 --nostream"` — в логах должна быть строка «Агент запущен».
+4. Проверка:
+   - `ssh <сервер> "su - agent -c 'source ~/.nvm/nvm.sh && pm2 logs threads-agent --lines 30 --nostream'"` — в логах «Агент запущен».
    - `curl -s <домен API>/healthz` должен вернуть `{"ok":true}`.
-6. Коротко сообщи результат. Если в логах ошибка про токен Threads — пользователю нужно обновить
+5. Коротко сообщи результат. Если в логах ошибка про токен Threads — пользователю нужно обновить
    `THREADS_ACCESS_TOKEN` в `.env` на сервере (`npm run token -- <короткий_токен>`).
 
-Админку на Vercel этой командой не выкладываем: Vercel сам собирает её при пуше в GitHub.
-Если менялся `public/`, напомни пользователю, что изменения появятся после пуша.
+Если команды по SSH недоступны, дай пользователю те же команды для консоли DigitalOcean
+(Droplet → Console): сначала `su - agent` отдельной командой, потом остальное.
+
+Админку на Vercel этой командой не выкладываем: Vercel сам собирает её при пуше в `main`.
 
 Никогда не копируй `.env` и `data/` на сервер или с сервера и не выводи их содержимое.

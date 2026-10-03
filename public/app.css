@@ -240,6 +240,7 @@ input:focus, textarea:focus { outline: none; border-color: var(--accent); backgr
 .field textarea.tall { min-height: 280px; font-size: 14px; }
 .grid2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
 .grid2 input { width: 100%; }
+.settings.forget { margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--line); }
 .save-bar { display: flex; gap: 12px; align-items: center; position: sticky; bottom: 0; padding: 14px 0; background: var(--bg); border-top: 1px solid var(--line); }
 
 /* ── Уведомления ────────────────────────────────────────── */

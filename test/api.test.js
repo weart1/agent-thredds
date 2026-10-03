@@ -84,3 +84,14 @@ test('CORS: админка с разрешённого поддомена, чу�
   const ok = await fetch(`${base}/stats`, { headers: { Origin: 'https://agent.example.com', cookie } });
   assert.equal(ok.status, 200);
 });
+
+test('удаление данных по запросу', async () => {
+  assert.equal((await call('/forget', { method: 'POST', body: { username: '<script>' } })).status, 400);
+  const { data: drafts } = await call('/drafts');
+  const name = drafts[0].username;
+  const r = await call('/forget', { method: 'POST', body: { username: `@${name}` } });
+  assert.equal(r.status, 200);
+  assert.ok(r.data.removed > 0);
+  const { data: after } = await call('/drafts');
+  assert.ok(!after.some((d) => d.username === name));
+});

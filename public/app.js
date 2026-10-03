@@ -70,12 +70,19 @@ function toast(text, kind = '') {
 const API_BASE = String(window.API_BASE || '').replace(/\/$/, '');
 
 async function api(path, { method = 'GET', body } = {}) {
-  const res = await fetch(`${API_BASE}/api${path}`, {
-    method,
-    headers: body ? { 'Content-Type': 'application/json' } : {},
-    body: body ? JSON.stringify(body) : undefined,
-    credentials: 'include',
-  });
+  let res;
+  try {
+    res = await fetch(`${API_BASE}/api${path}`, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : {},
+      body: body ? JSON.stringify(body) : undefined,
+      credentials: 'include',
+    });
+  } catch {
+    const e = new Error('Сервер агента недоступен. Проверьте, что он запущен, и обновите страницу.');
+    e.offline = true;
+    throw e;
+  }
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && path !== '/login') {
     showLogin();
@@ -92,10 +99,10 @@ async function withBusy(btn, fn) {
 }
 
 // ── Вход ────────────────────────────────────────────────────────
-function showLogin() {
+function showLogin(notice) {
   state.events?.close();
   state.events = null;
-  const err = h('p', { class: 'error', hidden: true });
+  const err = h('p', { class: 'error', hidden: !notice }, notice || '');
   const input = h('input', { type: 'password', id: 'pw', autocomplete: 'current-password', required: true });
   const btn = h('button', { class: 'btn primary', type: 'submit' }, 'Войти');
   const form = h('form', {
@@ -567,7 +574,36 @@ async function renderSettings() {
     ),
     h('div', { class: 'save-bar' }, saveBtn),
   );
-  pageEl.replaceChildren(head('Настройки', 'Изменения применяются со следующего прогона.'), form);
+
+  // Удаление данных по запросу человека (политика конфиденциальности)
+  const who = h('input', { id: 'forget', type: 'text', placeholder: '@username', autocomplete: 'off' });
+  const forgetBtn = h('button', { class: 'btn', type: 'submit' }, 'Удалить данные');
+  const forget = h('form', {
+    class: 'settings forget',
+    onsubmit: (e) => {
+      e.preventDefault();
+      const name = who.value.trim();
+      if (!name) return;
+      if (!confirm(`Удалить все данные о ${name}? Агент больше никогда не будет ему отвечать. Отменить нельзя.`)) return;
+      withBusy(forgetBtn, async () => {
+        try {
+          const r = await api('/forget', { method: 'POST', body: { username: name } });
+          who.value = '';
+          toast(`Удалено записей: ${r.removed}`);
+        } catch (x) { toast(x.message, 'error'); }
+      });
+    },
+  },
+    h('fieldset', {},
+      h('legend', {}, 'Удаление данных по запросу'),
+      h('div', { class: 'field' },
+        h('label', { for: 'forget' }, 'Имя пользователя Threads'),
+        who,
+        h('small', {}, 'Если человек попросил удалить его данные: стираются его посты, черновики и история, агент больше ему не отвечает.')),
+      h('div', {}, forgetBtn),
+    ),
+  );
+  pageEl.replaceChildren(head('Настройки', 'Изменения применяются со следующего прогона.'), form, forget);
 }
 
 // ── Живые обновления ────────────────────────────────────────────
@@ -612,8 +648,9 @@ function refreshStats() {
 async function boot() {
   try {
     await api('/me');
-  } catch {
-    return; // showLogin уже вызван
+  } catch (e) {
+    if (e.offline) showLogin(e.message); // иначе showLogin уже вызван в api()
+    return;
   }
   renderShell();
   [state.stats, state.settings] = await Promise.all([api('/stats'), api('/settings')]);

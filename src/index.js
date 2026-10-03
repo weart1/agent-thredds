@@ -34,7 +34,7 @@ app.nextRun = (name) => {
 
 async function main() {
   const server = createServer(app);
-  server.listen(config.port, () => console.log(`Админка: http://localhost:${config.port}`));
+  server.listen(config.port, config.host, () => console.log(`Админка: http://${config.host || "localhost"}:${config.port}`));
 
   try {
     if (await app.threads.refreshTokenIfNeeded()) app.log('system', 'Токен Threads продлён');
