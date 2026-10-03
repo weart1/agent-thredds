@@ -31,6 +31,8 @@ if (password.length < 10) throw new Error('ADMIN_PASSWORD должен быть 
 
 export const config = {
   port: Number(process.env.PORT || 3000),
+  // 127.0.0.1 — принимать соединения только с этого сервера (через nginx/Caddy). Пусто — все адреса
+  host: process.env.HOST || undefined,
   admin: {
     password,
     // Без SESSION_SECRET сессии сбрасываются при каждом перезапуске
