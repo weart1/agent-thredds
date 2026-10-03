@@ -70,12 +70,19 @@ function toast(text, kind = '') {
 const API_BASE = String(window.API_BASE || '').replace(/\/$/, '');
 
 async function api(path, { method = 'GET', body } = {}) {
-  const res = await fetch(`${API_BASE}/api${path}`, {
-    method,
-    headers: body ? { 'Content-Type': 'application/json' } : {},
-    body: body ? JSON.stringify(body) : undefined,
-    credentials: 'include',
-  });
+  let res;
+  try {
+    res = await fetch(`${API_BASE}/api${path}`, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : {},
+      body: body ? JSON.stringify(body) : undefined,
+      credentials: 'include',
+    });
+  } catch {
+    const e = new Error('Сервер агента недоступен. Проверьте, что он запущен, и обновите страницу.');
+    e.offline = true;
+    throw e;
+  }
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && path !== '/login') {
     showLogin();
@@ -92,10 +99,10 @@ async function withBusy(btn, fn) {
 }
 
 // ── Вход ────────────────────────────────────────────────────────
-function showLogin() {
+function showLogin(notice) {
   state.events?.close();
   state.events = null;
-  const err = h('p', { class: 'error', hidden: true });
+  const err = h('p', { class: 'error', hidden: !notice }, notice || '');
   const input = h('input', { type: 'password', id: 'pw', autocomplete: 'current-password', required: true });
   const btn = h('button', { class: 'btn primary', type: 'submit' }, 'Войти');
   const form = h('form', {
@@ -641,8 +648,9 @@ function refreshStats() {
 async function boot() {
   try {
     await api('/me');
-  } catch {
-    return; // showLogin уже вызван
+  } catch (e) {
+    if (e.offline) showLogin(e.message); // иначе showLogin уже вызван в api()
+    return;
   }
   renderShell();
   [state.stats, state.settings] = await Promise.all([api('/stats'), api('/settings')]);
