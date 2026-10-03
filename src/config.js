@@ -6,11 +6,14 @@ dotenv.config({ quiet: true });
 
 // MOCK=1 — режим разработки: фейковые Threads и Claude, ключи не нужны
 export const MOCK = process.env.MOCK === '1';
+// MOCK=1 MOCK_AI=0 — тестовые посты Threads, но настоящая нейросеть (нужен ключ). Ничего не публикуется
+export const REAL_AI = MOCK && process.env.MOCK_AI === '0';
 
 const MOCK_DEFAULTS = { ADMIN_PASSWORD: 'mock-password', THREADS_ACCESS_TOKEN: 'mock', RUNWARE_API_KEY: 'mock', ANTHROPIC_API_KEY: 'mock' };
 
 const required = (key) => {
-  const v = process.env[key] || (MOCK ? MOCK_DEFAULTS[key] : undefined);
+  const aiKey = key === 'RUNWARE_API_KEY' || key === 'ANTHROPIC_API_KEY';
+  const v = process.env[key] || (MOCK && !(REAL_AI && aiKey) ? MOCK_DEFAULTS[key] : undefined);
   if (!v) throw new Error(`Не задана переменная ${key} в .env`);
   return v;
 };

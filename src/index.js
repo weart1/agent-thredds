@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import cron from 'node-cron';
-import { config, MOCK } from './config.js';
+import { config, MOCK, REAL_AI } from './config.js';
 import { Store } from './store.js';
 import { ThreadsClient } from './threads.js';
 import { createAI } from './ai.js';
@@ -19,8 +19,9 @@ app.log = (type, text, meta) => {
 if (MOCK) {
   const { createMockThreads, createMockAI } = await import('./mock.js');
   app.threads = createMockThreads();
-  app.ai = createMockAI();
-  console.log('⚠️  MOCK-режим: Threads и нейросеть подменены, в Threads ничего не публикуется. Пароль: mock-password');
+  app.ai = REAL_AI ? createAI(config, () => app.store.settings) : createMockAI();
+  console.log(`⚠️  MOCK-режим: Threads подменён${REAL_AI ? `, нейросеть настоящая (${config.ai.provider})` : ' и нейросеть подменены'}, в Threads ничего не публикуется.` +
+    (process.env.ADMIN_PASSWORD ? '' : ' Пароль: mock-password'));
 } else {
   app.threads = new ThreadsClient(app.store, config.threads);
   app.ai = createAI(config, () => app.store.settings);
