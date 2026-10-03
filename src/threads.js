@@ -74,7 +74,14 @@ export class ThreadsClient {
 
   /** Продлевает долгоживущий токен (он живёт 60 дней). Делаем это раз в неделю. */
   async refreshTokenIfNeeded() {
-    const last = this.store.data.tokenRefreshedAt || 0;
+    const last = this.store.data.tokenRefreshedAt;
+    // Первый запуск: токен только что выдан, а Meta продлевает токены не раньше чем через сутки.
+    // Запоминаем время и продлеваем через неделю.
+    if (!last) {
+      this.store.data.tokenRefreshedAt = Date.now();
+      this.store.save();
+      return false;
+    }
     if (Date.now() - last < 7 * DAY) return false;
     const url = new URL('https://graph.threads.net/refresh_access_token');
     url.search = new URLSearchParams({ grant_type: 'th_refresh_token', access_token: this.token }).toString();
