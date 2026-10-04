@@ -25,6 +25,9 @@ Node.js-сервис: по расписанию ищет в Threads посты, 
 - `src/ai.js` — вызовы модели: дешёвая фильтрует, сильная пишет; промпты, `enforceBrand()`.
   Провайдер по умолчанию Runware (OpenAI-совместимый `/v1/chat/completions` с tools), запасной — Claude API (`AI_PROVIDER=anthropic`).
 - `src/threads.js` — клиент официального Threads API (graph.threads.net).
+- `src/oauth.js` — получение токена Threads: вход через threads.net/oauth (кнопка «Подключить Threads» в настройках →
+  `/api/oauth/threads/start` → `/oauth/threads/callback`, защита через одноразовый `state`), обмен на долгоживущий, запись в `.env`.
+  Redirect URI `https://api-agent.weartstudio.io/oauth/threads/callback` должен быть в настройках приложения Meta.
 - `src/server.js` — Express: вход по паролю (подписанная cookie), REST API, SSE `/api/events`.
   CORS только для origin из `ADMIN_ORIGIN`; изменяющие запросы с чужих origin получают 403.
 - `src/store.js` — всё состояние в одном JSON-файле `data/db.json`.

@@ -2,6 +2,8 @@ import express from 'express';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { composeReply, enforceBrand, charLen, THREADS_MAX } from './ai.js';
+import { authorizeUrl, exchangeCode, saveEnvValue } from './oauth.js';
+import { MOCK } from './config.js';
 
 const COOKIE = 'wa_session';
 const SESSION_DAYS = 14;
@@ -55,6 +57,46 @@ export function createServer(app) {
 
   // Проверка, что сервер жив (для деплоя и мониторинга). Без авторизации и без данных.
   server.get('/healthz', (req, res) => res.json({ ok: true }));
+
+  // ── Подключение Threads через вход (OAuth) ─────────────────────
+  // /api/oauth/threads/start (только после входа в админку) → Threads → /oauth/threads/callback
+  const oauthStates = new Map(); // state -> срок действия
+  const callbackUrl = (req) => `${req.protocol}://${req.get('host')}/oauth/threads/callback`;
+  const page = (title, text) => `<!doctype html><html lang="ru"><head><meta charset="utf-8">` +
+    `<meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title></head>` +
+    `<body><h1>${title}</h1><p>${text}</p><p><a href="${config.admin.allowedOrigins[0] || '/'}">Вернуться в админку</a></p></body></html>`;
+
+  server.get('/oauth/threads/callback', async (req, res) => {
+    const state = String(req.query.state || '');
+    const expires = oauthStates.get(state);
+    oauthStates.delete(state);
+    if (!expires || expires < Date.now()) {
+      return res.status(400).type('html').send(page('Ссылка устарела', 'Начните подключение заново кнопкой «Подключить Threads» в настройках админки.'));
+    }
+    if (req.query.error || !req.query.code) {
+      app.log('warn', 'Подключение Threads отменено или не разрешено');
+      return res.status(400).type('html').send(page('Доступ не выдан', 'Threads не выдал доступ. Попробуйте ещё раз и нажмите «Разрешить».'));
+    }
+    try {
+      const { appId, appSecret } = config.threads;
+      const code = String(req.query.code).replace(/#_$/, '');
+      const token = await exchangeCode({ appId, appSecret, redirectUri: callbackUrl(req), code });
+      saveEnvValue('THREADS_ACCESS_TOKEN', token.access_token);
+      if (!MOCK) {
+        store.data.token = token.access_token;
+        store.data.tokenRefreshedAt = Date.now();
+        store.save();
+        try { app.me = await app.threads.me(); } catch { /* покажется в ленте при следующем запросе */ }
+      }
+      app.log('system', 'Threads подключён: долгоживущий токен сохранён на сервере');
+      res.type('html').send(page('Threads подключён', MOCK
+        ? 'Токен сохранён на сервере. Агент сейчас в тестовом режиме: чтобы перейти в боевой, перезапустите его без MOCK (команда в инструкции).'
+        : 'Токен сохранён, агент уже работает с ним.'));
+    } catch (e) {
+      app.log('error', `Подключение Threads не удалось: ${e.message}`);
+      res.status(502).type('html').send(page('Не получилось', `Meta ответила ошибкой: ${String(e.message).replace(/[<>&"]/g, '')}`));
+    }
+  });
 
   // ── Сессии: подписанная cookie, без внешних библиотек ──────────
   const sign = (v) => crypto.createHmac('sha256', config.admin.sessionSecret).update(v).digest('base64url');
@@ -127,6 +169,16 @@ export function createServer(app) {
   api.use(auth);
 
   api.get('/me', (req, res) => res.json({ ok: true, account: app.me?.username || null }));
+
+  api.get('/oauth/threads/start', (req, res) => {
+    const { appId, appSecret } = config.threads;
+    if (!appId || !appSecret) {
+      return res.status(400).type('html').send(page('Нет ключей приложения', 'Впишите THREADS_APP_ID и THREADS_APP_SECRET в .env на сервере и перезапустите агента.'));
+    }
+    const state = crypto.randomBytes(16).toString('hex');
+    oauthStates.set(state, Date.now() + 10 * 60 * 1000);
+    res.redirect(authorizeUrl({ appId, redirectUri: callbackUrl(req), state }));
+  });
 
   api.get('/stats', (req, res) => res.json(stats()));
 
