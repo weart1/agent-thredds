@@ -298,6 +298,12 @@ export function createServer(app) {
     int('userCooldownDays', 0, 365);
     int('maxPostAgeHours', 1, 24 * 14);
     if (typeof b.autoApproveMentions === 'boolean') s.autoApproveMentions = b.autoApproveMentions;
+    if (b.languages !== undefined) {
+      const list = (Array.isArray(b.languages) ? b.languages : String(b.languages).split(/[\s,;]+/))
+        .map((x) => String(x).trim().toLowerCase()).filter(Boolean);
+      if (list.some((x) => !/^[a-z]{2}$/.test(x))) throw new HttpError(400, 'Языки — двухбуквенные коды через запятую, например: en, ru');
+      s.languages = [...new Set(list)].slice(0, 10);
+    }
     store.data.settings = s;
     store.save();
     app.log('system', 'Настройки обновлены');

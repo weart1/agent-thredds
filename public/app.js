@@ -435,6 +435,7 @@ const OUTCOMES = {
   pending: ['В работе', 'muted'],
   below_threshold: ['Низкая оценка', 'muted'],
   limit: ['Не вошёл в лимит прогона', 'warn'],
+  other_language: ['Другой язык', 'muted'],
   model_skipped: ['Модель решила не отвечать', 'warn'],
   admin_skipped: ['Вы пропустили', 'muted'],
   error: ['Ошибка', 'danger'],
@@ -514,6 +515,7 @@ async function renderSettings() {
   if (state.view !== 'settings') return;
 
   const kw = h('textarea', { id: 'kw', value: s.keywords.join('\n') });
+  const langs = h('input', { id: 'langs', type: 'text', value: (s.languages || []).join(', '), placeholder: 'en' });
   const info = h('textarea', { id: 'info', class: 'tall', value: s.productInfo });
   const url = h('input', { id: 'url', type: 'url', value: s.productUrl });
   const num = (id, label, hint, value, min, max) => {
@@ -538,7 +540,7 @@ async function renderSettings() {
           state.settings = await api('/settings', {
             method: 'PUT',
             body: {
-              keywords: kw.value, productInfo: info.value, productUrl: url.value,
+              keywords: kw.value, languages: langs.value, productInfo: info.value, productUrl: url.value,
               minScore: Number(iMin.value), maxDraftsPerRun: Number(iDr.value), keywordsPerRun: Number(iKw.value),
               maxRepliesPerDay: Number(iRep.value), userCooldownDays: Number(iCd.value), maxPostAgeHours: Number(iAge.value),
               autoApproveMentions: auto.checked,
@@ -555,6 +557,10 @@ async function renderSettings() {
         h('label', { for: 'kw' }, 'Ключевые слова'),
         kw,
         h('small', {}, 'По одному на строку. Агент проходит их по кругу, по несколько за прогон.')),
+      h('div', { class: 'field' },
+        h('label', { for: 'langs' }, 'Языки постов'),
+        langs,
+        h('small', {}, 'Коды через запятую: en — только английские посты. Пусто — любые. Упоминаний не касается.')),
     ),
     h('fieldset', {},
       h('legend', {}, 'Что говорить о продукте'),

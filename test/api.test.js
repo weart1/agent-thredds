@@ -142,3 +142,11 @@ test('подключение Threads: полный путь сохраняет �
   // state одноразовый
   assert.equal((await realFetch(`${redirectUri}?code=abc&state=${state}`)).status, 400);
 });
+
+test('настройка языков проверяется', async () => {
+  assert.equal((await call('/settings', { method: 'PUT', body: { languages: 'english' } })).status, 400);
+  const ok = await call('/settings', { method: 'PUT', body: { languages: 'EN, ru en' } });
+  assert.deepEqual(ok.data.languages, ['en', 'ru']);
+  const empty = await call('/settings', { method: 'PUT', body: { languages: '' } });
+  assert.deepEqual(empty.data.languages, []);
+});

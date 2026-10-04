@@ -54,7 +54,7 @@ const score = (text) => {
 export function createMockAI() {
   return {
     async filterPosts(posts) {
-      return posts.map((p) => ({ ...p, ...score(p.text) }));
+      return posts.map((p) => ({ ...p, ...score(p.text), lang: /[а-яё]/i.test(p.text) ? 'ru' : 'en' }));
     },
     async draftReply(post, { previous } = {}) {
       await new Promise((r) => setTimeout(r, 300));

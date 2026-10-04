@@ -26,6 +26,7 @@ const FILTER_TOOL = {
           properties: {
             id: { type: 'string' },
             intent: { type: 'string', enum: ['looking_for_tool', 'asking_how_to', 'discussion', 'off_topic'] },
+            lang: { type: 'string', description: 'Язык поста: код ISO 639-1 (en, ru, es, ...)' },
             score: { type: 'integer', minimum: 0, maximum: 10 },
             reason: { type: 'string' },
           },
@@ -60,7 +61,9 @@ const FILTER_SYSTEM = `Ты помогаешь команде WeArt Studio (AI-�
 - 4–6: общее обсуждение AI-генерации, где реклама выглядела бы навязчиво.
 - 0–3: не по теме, новости, критика ИИ, мемы, реклама других сервисов, посты компаний-конкурентов, политика, трагедии, NSFW, всё, что связано с детьми.
 
-Будь строгим: лучше пропустить пост, чем ответить там, где это неуместно.`;
+Будь строгим: лучше пропустить пост, чем ответить там, где это неуместно.
+
+Для каждого поста укажи lang — язык поста кодом ISO 639-1 (en, ru, es, ...).`;
 
 const draftSystem = (productInfo, url) => `Ты пишешь ответы в Threads от лица команды WeArt Studio.
 
@@ -150,7 +153,7 @@ export function createAI(config, getSettings, { fetch: fetchFn = fetch } = {}) {
       const byId = new Map((r.results || []).map((x) => [String(x.id), x]));
       for (const p of batch) {
         const v = byId.get(String(p.id));
-        if (v) out.push({ ...p, intent: v.intent, score: v.score, reason: v.reason });
+        if (v) out.push({ ...p, intent: v.intent, score: v.score, reason: v.reason, lang: v.lang ? String(v.lang).toLowerCase().slice(0, 5) : null });
       }
     }
     return out;
