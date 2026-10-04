@@ -95,3 +95,50 @@ test('удаление данных по запросу', async () => {
   const { data: after } = await call('/drafts');
   assert.ok(!after.some((d) => d.username === name));
 });
+
+test('подключение Threads: старт только после входа, чужой state отклоняется', async () => {
+  const origin = base.replace(/\/api$/, '');
+  const anon = await fetch(`${base}/oauth/threads/start`, { redirect: 'manual' });
+  assert.equal(anon.status, 401);
+  // В тестах нет THREADS_APP_ID — подсказка вместо перехода
+  const noKeys = await fetch(`${base}/oauth/threads/start`, { redirect: 'manual', headers: { cookie } });
+  assert.equal(noKeys.status, 400);
+  const bad = await fetch(`${origin}/oauth/threads/callback?code=x&state=fake`);
+  assert.equal(bad.status, 400);
+});
+
+test('подключение Threads: полный путь сохраняет токен в .env', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const envFile = path.join(path.dirname(process.env.DATA_FILE), '.env');
+  fs.writeFileSync(envFile, 'PORT=3100\nTHREADS_ACCESS_TOKEN=old\n');
+  process.env.ENV_FILE = envFile;
+  Object.assign(config.threads, { appId: '123', appSecret: 'secret' });
+
+  const start = await fetch(`${base}/oauth/threads/start`, { redirect: 'manual', headers: { cookie } });
+  assert.equal(start.status, 302);
+  const auth = new URL(start.headers.get('location'));
+  assert.equal(auth.hostname, 'threads.net');
+  assert.equal(auth.searchParams.get('client_id'), '123');
+  const state = auth.searchParams.get('state');
+  const redirectUri = auth.searchParams.get('redirect_uri');
+  assert.ok(redirectUri.endsWith('/oauth/threads/callback'));
+
+  const realFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    if (!String(url).includes('graph.threads.net')) return realFetch(url, init);
+    calls.push(String(url));
+    return new Response(JSON.stringify({ access_token: calls.length === 1 ? 'SHORT' : 'LONG', expires_in: 5184000 }));
+  };
+  try {
+    const cb = await realFetch(`${redirectUri}?code=abc%23_&state=${state}`);
+    assert.equal(cb.status, 200);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  assert.equal(calls.length, 2);
+  assert.equal(fs.readFileSync(envFile, 'utf8'), 'PORT=3100\nTHREADS_ACCESS_TOKEN=LONG\n');
+  // state одноразовый
+  assert.equal((await realFetch(`${redirectUri}?code=abc&state=${state}`)).status, 400);
+});

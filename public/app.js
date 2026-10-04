@@ -603,7 +603,16 @@ async function renderSettings() {
       h('div', {}, forgetBtn),
     ),
   );
-  pageEl.replaceChildren(head('Настройки', 'Изменения применяются со следующего прогона.'), form, forget);
+  // Подключение аккаунта Threads: вход на странице Threads, токен сохраняется на сервере
+  const connect = h('div', { class: 'settings forget' },
+    h('fieldset', {},
+      h('legend', {}, 'Подключение Threads'),
+      h('p', {}, state.stats?.account ? `Сейчас подключён @${state.stats.account}.` : 'Аккаунт Threads не подключён.'),
+      h('small', {}, 'Откроется страница Threads: войдите аккаунтом бренда и нажмите «Разрешить». Токен сохранится на сервере сам. Пригодится и когда токен истёк.'),
+      h('div', {}, h('a', { class: 'btn', href: `${API_BASE}/api/oauth/threads/start` }, 'Подключить Threads')),
+    ),
+  );
+  pageEl.replaceChildren(head('Настройки', 'Изменения применяются со следующего прогона.'), form, connect, forget);
 }
 
 // ── Живые обновления ────────────────────────────────────────────
