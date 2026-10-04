@@ -115,8 +115,11 @@ export function createPipeline(app) {
 
       const scored = await ai.filterPosts(candidates);
       const minScore = S().minScore;
+      // Языки рынка: пусто — любые. Пост без определённого языка не отсекаем
+      const langs = S().languages || [];
+      const langOk = (p) => !langs.length || !p.lang || langs.includes(p.lang);
       const passing = scored
-        .filter((p) => p.score >= minScore && p.intent !== 'off_topic')
+        .filter((p) => langOk(p) && p.score >= minScore && p.intent !== 'off_topic')
         .sort((a, b) => b.score - a.score);
       const best = passing.slice(0, S().maxDraftsPerRun);
       const bestIds = new Set(best.map((p) => p.id));
@@ -125,7 +128,9 @@ export function createPipeline(app) {
         store.addScored({
           id: p.id, keyword: p.keyword, username: p.username, text: p.text, permalink: p.permalink,
           score: p.score, intent: p.intent, reason: p.reason,
-          outcome: bestIds.has(p.id) ? 'pending' : p.score >= minScore && p.intent !== 'off_topic' ? 'limit' : 'below_threshold',
+          lang: p.lang || null,
+          outcome: bestIds.has(p.id) ? 'pending' : !langOk(p) ? 'other_language'
+            : p.score >= minScore && p.intent !== 'off_topic' ? 'limit' : 'below_threshold',
         });
       }
       stats.relevant = best.length;

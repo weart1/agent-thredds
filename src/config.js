@@ -78,5 +78,6 @@ export const config = {
     userCooldownDays: 30,
     maxPostAgeHours: 48,
     autoApproveMentions: false,
+    languages: [], // коды языков постов для поиска, например ['en']; пусто — любые
   },
 };

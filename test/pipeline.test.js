@@ -52,3 +52,14 @@ test('пауза останавливает плановый поиск, но н
   assert.equal((await app.pipeline.runSearch()).message, 'Агент на паузе');
   assert.ok((await app.pipeline.runSearch({ manual: true })).found > 0);
 });
+
+test('фильтр по языку: при languages=[en] черновики только по английским постам', async () => {
+  const app = makeApp();
+  app.store.settings.languages = ['en'];
+  await app.pipeline.runSearch({ manual: true });
+  const drafts = app.store.draftsByStatus('pending');
+  for (const d of drafts) assert.doesNotMatch(d.postText, /[а-яё]/i, `русский пост в очереди: ${d.postText}`);
+  const ru = app.store.data.scored.filter((p) => /[а-яё]/i.test(p.text));
+  assert.ok(ru.length > 0, 'русские посты были оценены');
+  for (const p of ru) assert.equal(p.outcome, 'other_language');
+});
