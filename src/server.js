@@ -365,7 +365,7 @@ export function createServer(app) {
   });
 
   server.use('/api', api);
-  server.use(express.static(fileURLToPath(new URL('../public', import.meta.url)), { index: 'index.html' }));
+  server.use(express.static(fileURLToPath(new URL('../public', import.meta.url)), { index: 'index.html', extensions: ['html'] }));
 
   server.use((err, req, res, next) => {
     const status = err.status || 500;
