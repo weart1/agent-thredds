@@ -7,6 +7,7 @@ export const THREADS_SCOPES = [
   'threads_manage_replies',
   'threads_keyword_search',
   'threads_manage_mentions',
+  'threads_profile_discovery',
 ];
 
 export function authorizeUrl({ appId, redirectUri, state }) {

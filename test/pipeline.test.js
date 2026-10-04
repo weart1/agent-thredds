@@ -63,3 +63,18 @@ test('фильтр по языку: при languages=[en] черновики т�
   assert.ok(ru.length > 0, 'русские посты были оценены');
   for (const p of ru) assert.equal(p.outcome, 'other_language');
 });
+
+test('отслеживаемые аккаунты: посты собираются, черновик по кнопке, повтор запрещён', async () => {
+  const app = makeApp();
+  assert.match((await app.pipeline.runWatch({ manual: true })).message, /пуст/);
+  app.store.settings.watchUsers = ['creator_one'];
+  const r = await app.pipeline.runWatch({ manual: true });
+  assert.equal(r.added, 3);
+  assert.equal((await app.pipeline.runWatch({ manual: true })).added, 0, 'те же посты второй раз не добавляются');
+  const post = app.store.data.watchPosts[0];
+  const d = await app.pipeline.draftForWatchPost(post.id);
+  assert.equal(d.source, 'watch');
+  assert.equal(d.username, 'creator_one');
+  const other = app.store.data.watchPosts[1];
+  await assert.rejects(app.pipeline.draftForWatchPost(other.id), /уже есть черновик/);
+});

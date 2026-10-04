@@ -55,6 +55,16 @@ export class ThreadsClient {
     return r.data || [];
   }
 
+  /** Публичные посты аккаунта по имени (Profile Discovery, разрешение threads_profile_discovery). */
+  async profilePosts(username, limit = 10) {
+    const r = await this.request('GET', 'profile_posts', {
+      username,
+      fields: 'id,text,username,permalink,timestamp,media_type',
+      limit: String(limit),
+    });
+    return r.data || [];
+  }
+
   /** Публикует текстовый ответ на пост: создание контейнера → публикация. */
   async reply(replyToId, text) {
     const container = await this.request('POST', 'me/threads', {

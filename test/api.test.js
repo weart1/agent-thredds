@@ -150,3 +150,12 @@ test('настройка языков проверяется', async () => {
   const empty = await call('/settings', { method: 'PUT', body: { languages: '' } });
   assert.deepEqual(empty.data.languages, []);
 });
+
+test('отслеживаемые: список нормализуется, посты отдаются', async () => {
+  assert.equal((await call('/settings', { method: 'PUT', body: { watchUsers: 'not a name!' } })).status, 400);
+  const ok = await call('/settings', { method: 'PUT', body: { watchUsers: '@Creator_One\nhttps://www.threads.com/@second.user?x=1\n@creator_one' } });
+  assert.deepEqual(ok.data.watchUsers, ['creator_one', 'second.user']);
+  const w = await call('/watch');
+  assert.equal(w.status, 200);
+  assert.deepEqual(w.data.users, ['creator_one', 'second.user']);
+});

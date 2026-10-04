@@ -25,6 +25,9 @@ Node.js-сервис: по расписанию ищет в Threads посты, 
 - `src/ai.js` — вызовы модели: дешёвая фильтрует, сильная пишет; промпты, `enforceBrand()`.
   Провайдер по умолчанию Runware (OpenAI-совместимый `/v1/chat/completions` с tools), запасной — Claude API (`AI_PROVIDER=anthropic`).
 - `src/threads.js` — клиент официального Threads API (graph.threads.net).
+- Отслеживаемые аккаунты: `settings.watchUsers` → `pipeline.runWatch()` (cron `WATCH_CRON`, по умолчанию каждые 2 часа, до 15 аккаунтов за прогон)
+  через Profile Discovery (`GET /profile_posts`, разрешение `threads_profile_discovery`) → `store.data.watchPosts` → вкладка «Отслеживаемые»;
+  черновик только по кнопке (`draftForWatchPost`), с паузой для автора и одним черновиком на автора.
 - `src/oauth.js` — получение токена Threads: вход через threads.net/oauth (кнопка «Подключить Threads» в настройках →
   `/api/oauth/threads/start` → `/oauth/threads/callback`, защита через одноразовый `state`), обмен на долгоживущий, запись в `.env`.
   Redirect URI `https://api-agent.weartstudio.io/oauth/threads/callback` должен быть в настройках приложения Meta.

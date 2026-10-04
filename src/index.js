@@ -62,6 +62,7 @@ async function main() {
 
   tasks.search = cron.schedule(config.schedule.search, safe('Поиск', () => app.pipeline.runSearch()));
   tasks.mentions = cron.schedule(config.schedule.mentions, safe('Упоминания', () => app.pipeline.runMentions()));
+  tasks.watch = cron.schedule(config.schedule.watch, safe('Отслеживаемые', () => app.pipeline.runWatch()));
   tasks.maintenance = cron.schedule('0 4 * * *', safe('Обслуживание', async () => {
     if (await app.threads.refreshTokenIfNeeded()) app.log('system', 'Токен Threads продлён');
     const expired = app.store.prune();

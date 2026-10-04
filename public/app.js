@@ -135,6 +135,7 @@ const VIEWS = {
   feed: { title: 'Что делает агент', render: renderFeed },
   scored: { title: 'Оценки постов', render: renderScored },
   sent: { title: 'Отправленные', render: renderSent },
+  watch: { title: 'Отслеживаемые', render: renderWatch },
   settings: { title: 'Настройки', render: renderSettings },
 };
 
@@ -147,6 +148,7 @@ function renderShell() {
     h('a', { href: '#feed', 'data-view': 'feed' }, 'Что делает агент'),
     h('a', { href: '#scored', 'data-view': 'scored' }, 'Оценки постов'),
     h('a', { href: '#sent', 'data-view': 'sent' }, 'Отправленные'),
+    h('a', { href: '#watch', 'data-view': 'watch' }, 'Отслеживаемые'),
     h('a', { href: '#settings', 'data-view': 'settings' }, 'Настройки'),
   );
   const logout = h('button', {
@@ -258,7 +260,7 @@ function postTurn(d, { withLine = true } = {}) {
   const name = url
     ? h('a', { class: 'name', href: url, target: '_blank', rel: 'noopener noreferrer' }, `@${d.username}`)
     : h('span', { class: 'name' }, `@${d.username}`);
-  const src = d.source === 'mention' ? 'упомянул вас' : d.keyword ? `по запросу «${d.keyword}»` : null;
+  const src = d.source === 'mention' ? 'упомянул вас' : d.source === 'watch' ? 'отслеживаемый аккаунт' : d.keyword ? `по запросу «${d.keyword}»` : null;
   return h('div', { class: 'turn' },
     h('div', { class: 'rail' },
       h('div', { class: 'avatar', 'aria-hidden': 'true' }, (d.username || '?').slice(0, 1)),
@@ -386,7 +388,7 @@ async function renderQueue() {
 // ── Лента активности ────────────────────────────────────────────
 const KINDS = {
   search: 'Поиск', filter: 'Оценка', draft: 'Черновик', sent: 'Отправлено', skip: 'Пропуск',
-  error: 'Ошибка', warn: 'Внимание', mention: 'Упоминания', system: 'Система',
+  error: 'Ошибка', warn: 'Внимание', mention: 'Упоминания', system: 'Система', watch: 'Отслеживаемые',
 };
 
 function feedItem(e, fresh = false) {
@@ -508,6 +510,44 @@ async function renderSent() {
   );
 }
 
+// ── Отслеживаемые аккаунты ──────────────────────────────────────
+async function renderWatch() {
+  const { users, posts } = await api('/watch');
+  if (state.view !== 'watch') return;
+  const refresh = h('button', {
+    class: 'btn',
+    onclick: () => withBusy(refresh, async () => {
+      try { await api('/run/watch', { method: 'POST' }); toast('Проверяю аккаунты, посты появятся через несколько секунд'); } catch (x) { toast(x.message, 'error'); }
+    }),
+  }, 'Проверить сейчас');
+  const sub = users.length
+    ? `Свежие посты ${users.length} акк. Агент проверяет их каждые 2 часа. Ответ пишется по кнопке и попадает в очередь.`
+    : 'Список пуст. Добавьте аккаунты в «Настройках» → «Отслеживаемые аккаунты».';
+
+  const cards = posts.map((p) => {
+    const btn = h('button', { class: 'btn primary' }, 'Написать ответ');
+    const done = (text) => h('span', { class: 'tag muted' }, text);
+    const action = p.state === 'sent' ? done('Ответ отправлен') : p.state === 'pending' ? done('Черновик в очереди') : btn;
+    btn.addEventListener('click', () => withBusy(btn, async () => {
+      btn.textContent = 'Пишу…';
+      try {
+        await api(`/watch/${encodeURIComponent(p.id)}/draft`, { method: 'POST' });
+        btn.replaceWith(done('Черновик в очереди'));
+        toast('Черновик готов — он в «Очереди»');
+      } catch (x) { toast(x.message, 'error'); }
+    }));
+    return h('article', { class: 'card' },
+      h('div', { class: 'thread' }, postTurn({ ...p, postText: p.text, source: 'watch' }, { withLine: false })),
+      h('div', { class: 'card-foot' }, h('span', { class: 'why' }), h('div', { class: 'btns' }, action)),
+    );
+  });
+  pageEl.replaceChildren(
+    head('Отслеживаемые', sub, refresh),
+    cards.length ? h('div', { class: 'sent' }, cards)
+      : h('div', { class: 'empty' }, h('strong', {}, 'Пока нет постов'), users.length ? 'Нажмите «Проверить сейчас» или подождите плановую проверку.' : 'Добавьте аккаунты в настройках.'),
+  );
+}
+
 // ── Настройки ───────────────────────────────────────────────────
 async function renderSettings() {
   const s = await api('/settings');
@@ -516,6 +556,7 @@ async function renderSettings() {
 
   const kw = h('textarea', { id: 'kw', value: s.keywords.join('\n') });
   const langs = h('input', { id: 'langs', type: 'text', value: (s.languages || []).join(', '), placeholder: 'en' });
+  const watch = h('textarea', { id: 'watch', value: (s.watchUsers || []).map((u) => `@${u}`).join('\n'), placeholder: '@username' });
   const info = h('textarea', { id: 'info', class: 'tall', value: s.productInfo });
   const url = h('input', { id: 'url', type: 'url', value: s.productUrl });
   const num = (id, label, hint, value, min, max) => {
@@ -540,7 +581,7 @@ async function renderSettings() {
           state.settings = await api('/settings', {
             method: 'PUT',
             body: {
-              keywords: kw.value, languages: langs.value, productInfo: info.value, productUrl: url.value,
+              keywords: kw.value, languages: langs.value, watchUsers: watch.value, productInfo: info.value, productUrl: url.value,
               minScore: Number(iMin.value), maxDraftsPerRun: Number(iDr.value), keywordsPerRun: Number(iKw.value),
               maxRepliesPerDay: Number(iRep.value), userCooldownDays: Number(iCd.value), maxPostAgeHours: Number(iAge.value),
               autoApproveMentions: auto.checked,
@@ -561,6 +602,10 @@ async function renderSettings() {
         h('label', { for: 'langs' }, 'Языки постов'),
         langs,
         h('small', {}, 'Коды через запятую: en — только английские посты. Пусто — любые. Упоминаний не касается.')),
+      h('div', { class: 'field' },
+        h('label', { for: 'watch' }, 'Отслеживаемые аккаунты'),
+        watch,
+        h('small', {}, 'По одному на строку: @username или ссылка на профиль. Их свежие посты — во вкладке «Отслеживаемые». Только публичные аккаунты от 100 подписчиков.')),
     ),
     h('fieldset', {},
       h('legend', {}, 'Что говорить о продукте'),
@@ -627,6 +672,7 @@ function connectEvents() {
   const es = new EventSource(`${API_BASE}/api/events`, { withCredentials: true });
   state.events = es;
   es.addEventListener('stats', (m) => { state.stats = JSON.parse(m.data); renderStatus(); });
+  es.addEventListener('watch', () => { if (state.view === 'watch') navigate(); });
   es.addEventListener('activity', (m) => {
     const e = JSON.parse(m.data);
     if (state.view === 'feed') prependFeed(e);

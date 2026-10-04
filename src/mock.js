@@ -36,6 +36,20 @@ export function createMockThreads() {
         });
     },
     async mentions() { return []; },
+    async profilePosts(username) {
+      const now = Date.now();
+      return SAMPLE_POSTS.slice(0, 3).map((p, i) => {
+        // ID постоянные, как у настоящих постов: повторный запрос не даёт дублей
+        return {
+          id: `w_${username}_${i}`,
+          username,
+          text: p.text,
+          permalink: `https://www.threads.net/@${username}/post/w${i}`,
+          timestamp: new Date(now - (i + 1) * 3600e3).toISOString(),
+          media_type: 'TEXT_POST',
+        };
+      });
+    },
     async reply(id) {
       await new Promise((r) => setTimeout(r, 400));
       return { id: `reply_${id}`, permalink: `https://www.threads.net/@weartstudio_mock/post/reply_${id}` };
