@@ -27,6 +27,8 @@ const EMPTY = {
   sentLog: [],
   activity: [],    // лента действий агента (новые в конце)
   scored: [],      // все оценённые посты с причинами (новые в конце)
+  watchPosts: [],  // свежие посты отслеживаемых аккаунтов (новые в конце)
+  watchCursor: 0,
 };
 
 /** Хранилище в JSON-файле. Для одного агента этого достаточно. */
@@ -125,6 +127,7 @@ export class Store {
       return out;
     };
     this.data.scored = keep(this.data.scored, (p) => !same(p.username));
+    this.data.watchPosts = keep(this.data.watchPosts, (p) => !same(p.username));
     this.data.sentLog = keep(this.data.sentLog, (s) => !same(s.username));
     const mention = new RegExp(`@${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?!\\w|\\.\\w)`, 'i');
     this.data.activity = keep(this.data.activity, (e) => !mention.test(e.text));
@@ -153,6 +156,7 @@ export class Store {
       if (d.status === 'sent' && now - (d.sentAt || d.createdAt) > SENT_DAYS * DAY) delete this.data.drafts[id];
     }
     this.data.scored = this.data.scored.filter((p) => now - p.at < POST_DAYS * DAY);
+    this.data.watchPosts = this.data.watchPosts.filter((p) => now - p.at < POST_DAYS * DAY);
     this.data.activity = this.data.activity.filter((e) => now - e.at < POST_DAYS * DAY);
     this.data.sentLog = this.data.sentLog.filter((s) => now - s.at < SENT_DAYS * DAY);
     // Имя автора держим, пока действует пауза, но не меньше SENT_DAYS

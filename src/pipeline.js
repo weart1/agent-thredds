@@ -201,7 +201,79 @@ export function createPipeline(app) {
     }
   }
 
-  const status = () => ({ searchRunning, mentionsRunning });
+  const MAX_WATCH_POSTS = 300;
+  const WATCH_PER_RUN = 15;   // аккаунтов за один прогон (лимит Profile Discovery — 1000 запросов в сутки)
+  let watchRunning = false;
 
-  return { runSearch, runMentions, publish, status };
+  /** Свежие посты отслеживаемых аккаунтов → вкладка «Отслеживаемые». Черновик — по кнопке. */
+  async function runWatch({ manual = false } = {}) {
+    const users = S().watchUsers || [];
+    if (!users.length) return { message: 'Список отслеживаемых аккаунтов пуст' };
+    if (watchRunning) return { message: 'Обновление уже идёт' };
+    if (store.data.paused && !manual) return { message: 'Агент на паузе' };
+    watchRunning = true;
+    let added = 0;
+    try {
+      const n = Math.min(WATCH_PER_RUN, users.length);
+      const start = (store.data.watchCursor || 0) % users.length;
+      const batch = Array.from({ length: n }, (_, i) => users[(start + i) % users.length]);
+      store.data.watchCursor = (start + n) % users.length;
+      const known = new Set(store.data.watchPosts.map((p) => p.id));
+      const errors = [];
+      for (const u of batch) {
+        let posts = [];
+        try {
+          posts = await threads.profilePosts(u);
+        } catch (e) {
+          errors.push(`@${u}: ${e.message}`);
+          continue;
+        }
+        for (const p of posts) {
+          if (!p.text || known.has(String(p.id)) || store.isBlocked(p.username || u)) continue;
+          if (ageHours(p.timestamp) > S().maxPostAgeHours) continue;
+          known.add(String(p.id));
+          store.data.watchPosts.push({
+            at: Date.now(), id: String(p.id), username: p.username || u, text: p.text,
+            permalink: p.permalink || null, postedAt: p.timestamp || null,
+          });
+          added++;
+        }
+      }
+      if (store.data.watchPosts.length > MAX_WATCH_POSTS) store.data.watchPosts.splice(0, store.data.watchPosts.length - MAX_WATCH_POSTS);
+      if (manual || added || errors.length) {
+        app.log('watch', `Отслеживаемые: проверено ${batch.length} акк., новых постов ${added}`);
+      }
+      if (errors.length) app.log('error', `Не удалось получить посты: ${errors.slice(0, 3).join('; ')}${errors.length > 3 ? ` и ещё ${errors.length - 3}` : ''}`);
+      app.events.emit('watch', { added });
+      return { checked: batch.length, added };
+    } finally {
+      watchRunning = false;
+      store.save();
+    }
+  }
+
+  /** Черновик ответа на пост отслеживаемого аккаунта (по кнопке в админке). */
+  async function draftForWatchPost(id) {
+    const wp = store.data.watchPosts.find((p) => p.id === id);
+    if (!wp) throw Object.assign(new Error('Пост не найден, обновите список'), { status: 404 });
+    const existing = store.data.drafts[id];
+    if (existing && existing.status === 'pending') return existing;
+    if (existing && existing.status === 'sent') throw Object.assign(new Error('На этот пост уже отправлен ответ'), { status: 409 });
+    if (!store.canReplyToUser(wp.username, S().userCooldownDays)) {
+      throw Object.assign(new Error(`@${wp.username} уже отвечали за последние ${S().userCooldownDays} дн. (пауза для автора в настройках)`), { status: 409 });
+    }
+    if (store.draftsByStatus('pending').some((d) => d.username === wp.username)) {
+      throw Object.assign(new Error(`Для @${wp.username} уже есть черновик в очереди`), { status: 409 });
+    }
+    const post = { id: wp.id, username: wp.username, text: wp.text, permalink: wp.permalink, timestamp: wp.postedAt, source: 'watch' };
+    const draft = await ai.draftReply(post);
+    if (draft.skip) throw Object.assign(new Error(`Модель предлагает не отвечать: ${draft.reason}`), { status: 422 });
+    const d = createDraft(post, draft);
+    app.log('draft', `Черновик для @${wp.username} (отслеживаемый аккаунт)`, { draftId: d.id });
+    return d;
+  }
+
+  const status = () => ({ searchRunning, mentionsRunning, watchRunning });
+
+  return { runSearch, runMentions, runWatch, draftForWatchPost, publish, status };
 }

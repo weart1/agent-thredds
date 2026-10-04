@@ -298,6 +298,15 @@ export function createServer(app) {
     int('userCooldownDays', 0, 365);
     int('maxPostAgeHours', 1, 24 * 14);
     if (typeof b.autoApproveMentions === 'boolean') s.autoApproveMentions = b.autoApproveMentions;
+    if (b.watchUsers !== undefined) {
+      const list = (Array.isArray(b.watchUsers) ? b.watchUsers : String(b.watchUsers).split(/[\s,;]+/))
+        .map((x) => String(x).trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?threads\.(net|com)\/@/i, '').replace(/[/?#].*$/, '').toLowerCase())
+        .filter(Boolean);
+      const bad = list.find((x) => !/^[\w.]{1,30}$/.test(x));
+      if (bad) throw new HttpError(400, `Не похоже на имя в Threads: ${bad}`);
+      if (list.length > 100) throw new HttpError(400, 'Не больше 100 отслеживаемых аккаунтов');
+      s.watchUsers = [...new Set(list)];
+    }
     if (b.languages !== undefined) {
       const list = (Array.isArray(b.languages) ? b.languages : String(b.languages).split(/[\s,;]+/))
         .map((x) => String(x).trim().toLowerCase()).filter(Boolean);
@@ -338,6 +347,31 @@ export function createServer(app) {
     res.status(202).json({ ok: true });
   });
 
+  api.get('/watch', (req, res) => {
+    const pendingIds = new Set(store.draftsByStatus('pending').map((d) => d.id));
+    const sentIds = new Set(store.draftsByStatus('sent').map((d) => d.id));
+    const list = store.data.watchPosts.slice().sort((a, b) => new Date(b.postedAt || 0) - new Date(a.postedAt || 0))
+      .slice(0, 200)
+      .map((p) => ({ ...p, state: sentIds.has(p.id) ? 'sent' : pendingIds.has(p.id) ? 'pending' : null }));
+    res.json({ users: store.settings.watchUsers || [], posts: list });
+  });
+
+  api.post('/watch/:id/draft', wrap(async (req, res) => {
+    try {
+      res.json(withPreview(await app.pipeline.draftForWatchPost(req.params.id)));
+    } catch (e) {
+      throw e.status ? new HttpError(e.status, e.message) : e;
+    }
+  }));
+
+  api.post('/run/watch', (req, res) => {
+    app.pipeline.runWatch({ manual: true })
+      .then((r) => { if (r?.message) app.log('system', r.message); })
+      .catch((e) => app.log('error', `Обновление отслеживаемых упало: ${e.message}`))
+      .finally(() => app.events.emit('stats', stats()));
+    res.status(202).json({ ok: true });
+  });
+
   api.post('/run/mentions', (req, res) => {
     app.pipeline.runMentions({ manual: true })
       .then((r) => { if (r?.message) app.log('system', r.message); })
@@ -359,6 +393,8 @@ export function createServer(app) {
     app.events.on('draft', onDraft);
     app.events.on('stats', onStats);
     app.events.on('status', onStatus);
+    const onWatch = (w) => send('watch', w);
+    app.events.on('watch', onWatch);
     send('stats', stats());
     const ping = setInterval(() => res.write(': ping\n\n'), 25000);
     req.on('close', () => {
@@ -367,6 +403,7 @@ export function createServer(app) {
       app.events.off('draft', onDraft);
       app.events.off('stats', onStats);
       app.events.off('status', onStatus);
+      app.events.off('watch', onWatch);
     });
   });
 

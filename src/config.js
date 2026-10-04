@@ -61,6 +61,7 @@ export const config = {
   schedule: {
     search: process.env.SEARCH_CRON || '0 */3 * * *',
     mentions: process.env.MENTIONS_CRON || '*/15 * * * *',
+    watch: process.env.WATCH_CRON || '30 */2 * * *',
   },
   // Официальный лимит Meta — 500 поисков за 7 дней; держим запас
   searchesPerWeek: 450,
@@ -79,5 +80,6 @@ export const config = {
     maxPostAgeHours: 48,
     autoApproveMentions: false,
     languages: [], // коды языков постов для поиска, например ['en']; пусто — любые
+    watchUsers: [], // отслеживаемые аккаунты Threads (без @)
   },
 };
