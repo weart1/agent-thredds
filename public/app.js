@@ -260,7 +260,7 @@ function postTurn(d, { withLine = true } = {}) {
   const name = url
     ? h('a', { class: 'name', href: url, target: '_blank', rel: 'noopener noreferrer' }, `@${d.username}`)
     : h('span', { class: 'name' }, `@${d.username}`);
-  const src = d.source === 'mention' ? 'упомянул вас' : d.source === 'watch' ? 'отслеживаемый аккаунт' : d.keyword ? `по запросу «${d.keyword}»` : null;
+  const src = d.source === 'mention' ? 'упомянул вас' : d.source === 'watch' ? 'отслеживаемый аккаунт' : d.source === 'manual' ? 'добавлен по ссылке' : d.keyword ? `по запросу «${d.keyword}»` : null;
   return h('div', { class: 'turn' },
     h('div', { class: 'rail' },
       h('div', { class: 'avatar', 'aria-hidden': 'true' }, (d.username || '?').slice(0, 1)),
@@ -367,6 +367,38 @@ function draftCard(d) {
   return card;
 }
 
+// Ответ на пост, который человек нашёл сам: ссылка + текст поста
+function manualForm() {
+  const url = h('input', { type: 'url', id: 'm-url', placeholder: 'https://www.threads.com/@name/post/…', required: true });
+  const text = h('textarea', { id: 'm-text', rows: 3, placeholder: 'Скопируйте сюда текст поста', required: true });
+  const btn = h('button', { class: 'btn primary', type: 'submit' }, 'Написать ответ');
+  const details = h('details', { class: 'manual' },
+    h('summary', {}, 'Ответить на пост по ссылке'),
+    h('form', {
+      onsubmit: (e) => {
+        e.preventDefault();
+        withBusy(btn, async () => {
+          btn.textContent = 'Пишу…';
+          try {
+            await api('/manual', { method: 'POST', body: { url: url.value, text: text.value } });
+            url.value = ''; text.value = '';
+            toast('Черновик готов');
+            navigate();
+          } catch (x) { toast(x.message, 'error'); }
+        });
+      },
+    },
+      h('div', { class: 'field' }, h('label', { for: 'm-url' }, 'Ссылка на пост'), url),
+      h('div', { class: 'field' }, h('label', { for: 'm-text' }, 'Текст поста'), text,
+        h('small', {}, 'Найдите пост в Threads, нажмите «Поделиться» → «Копировать ссылку», затем скопируйте его текст.')),
+      h('div', {}, btn),
+    ),
+  );
+  if (state.manualOpen) details.open = true;
+  details.addEventListener('toggle', () => { state.manualOpen = details.open; });
+  return details;
+}
+
 async function renderQueue() {
   const drafts = await api('/drafts?status=pending');
   if (state.view !== 'queue') return;
@@ -374,6 +406,7 @@ async function renderQueue() {
   if (!drafts.length) {
     pageEl.replaceChildren(
       head('Очередь', subtitle),
+      manualForm(),
       h('div', { class: 'empty' },
         h('strong', {}, 'Новых черновиков нет'),
         'Агент ищет посты по расписанию. Запустите поиск сейчас или добавьте ключевые слова в настройках.',
@@ -382,7 +415,7 @@ async function renderQueue() {
     );
     return;
   }
-  pageEl.replaceChildren(head('Очередь', subtitle), h('div', { class: 'queue' }, drafts.map(draftCard)));
+  pageEl.replaceChildren(head('Очередь', subtitle), manualForm(), h('div', { class: 'queue' }, drafts.map(draftCard)));
 }
 
 // ── Лента активности ────────────────────────────────────────────

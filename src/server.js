@@ -364,6 +364,14 @@ export function createServer(app) {
     }
   }));
 
+  api.post('/manual', wrap(async (req, res) => {
+    try {
+      res.json(withPreview(await app.pipeline.draftFromLink({ url: req.body?.url, text: req.body?.text })));
+    } catch (e) {
+      throw e.status ? new HttpError(e.status, e.message) : e;
+    }
+  }));
+
   api.post('/run/watch', (req, res) => {
     app.pipeline.runWatch({ manual: true })
       .then((r) => { if (r?.message) app.log('system', r.message); })

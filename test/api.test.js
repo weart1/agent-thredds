@@ -159,3 +159,14 @@ test('отслеживаемые: список нормализуется, по�
   assert.equal(w.status, 200);
   assert.deepEqual(w.data.users, ['creator_one', 'second.user']);
 });
+
+test('ответ по ссылке: черновик создаётся, неверная ссылка отклоняется', async () => {
+  assert.equal((await call('/manual', { method: 'POST', body: { url: 'https://example.com/x', text: 'hi there' } })).status, 400);
+  assert.equal((await call('/manual', { method: 'POST', body: { url: 'https://www.threads.com/@link_user/post/C8abcdef', text: '' } })).status, 400);
+  const r = await call('/manual', { method: 'POST', body: { url: 'https://www.threads.com/@link_user/post/C8abcdef', text: 'Which AI tool is best for music videos?' } });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.source, 'manual');
+  assert.equal(r.data.username, 'link_user');
+  const again = await call('/manual', { method: 'POST', body: { url: 'https://www.threads.com/@link_user/post/C8zzzzzz', text: 'Another question' } });
+  assert.equal(again.status, 409, 'второй черновик тому же автору запрещён');
+});
