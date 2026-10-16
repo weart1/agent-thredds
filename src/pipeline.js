@@ -1,4 +1,5 @@
 import { composeReply, charLen, THREADS_MAX } from './ai.js';
+import { parsePostLink } from './shortcode.js';
 
 const HOUR = 60 * 60 * 1000;
 const short = (s, n = 80) => {
@@ -252,28 +253,45 @@ export function createPipeline(app) {
     }
   }
 
+  const fail = (status, message) => Object.assign(new Error(message), { status });
+
+  /** Черновик по выбранному человеком посту (отслеживаемые, ссылка) — с теми же защитами от бана. */
+  async function draftForPost(post, label) {
+    const existing = store.data.drafts[post.id];
+    if (existing && existing.status === 'pending') return existing;
+    if (existing && existing.status === 'sent') throw fail(409, 'На этот пост уже отправлен ответ');
+    if (post.username === app.me?.username) throw fail(400, 'Это пост вашего аккаунта');
+    if (store.isBlocked(post.username)) throw fail(409, `@${post.username} попросил удалить данные — агент ему не отвечает`);
+    if (!store.canReplyToUser(post.username, S().userCooldownDays)) {
+      throw fail(409, `@${post.username} уже отвечали за последние ${S().userCooldownDays} дн. (пауза для автора в настройках)`);
+    }
+    if (store.draftsByStatus('pending').some((d) => d.username === post.username)) {
+      throw fail(409, `Для @${post.username} уже есть черновик в очереди`);
+    }
+    const draft = await ai.draftReply(post);
+    if (draft.skip) throw fail(422, `Модель предлагает не отвечать: ${draft.reason}`);
+    const d = createDraft(post, draft);
+    app.log('draft', `Черновик для @${post.username} (${label})`, { draftId: d.id });
+    return d;
+  }
+
   /** Черновик ответа на пост отслеживаемого аккаунта (по кнопке в админке). */
   async function draftForWatchPost(id) {
     const wp = store.data.watchPosts.find((p) => p.id === id);
-    if (!wp) throw Object.assign(new Error('Пост не найден, обновите список'), { status: 404 });
-    const existing = store.data.drafts[id];
-    if (existing && existing.status === 'pending') return existing;
-    if (existing && existing.status === 'sent') throw Object.assign(new Error('На этот пост уже отправлен ответ'), { status: 409 });
-    if (!store.canReplyToUser(wp.username, S().userCooldownDays)) {
-      throw Object.assign(new Error(`@${wp.username} уже отвечали за последние ${S().userCooldownDays} дн. (пауза для автора в настройках)`), { status: 409 });
-    }
-    if (store.draftsByStatus('pending').some((d) => d.username === wp.username)) {
-      throw Object.assign(new Error(`Для @${wp.username} уже есть черновик в очереди`), { status: 409 });
-    }
-    const post = { id: wp.id, username: wp.username, text: wp.text, permalink: wp.permalink, timestamp: wp.postedAt, source: 'watch' };
-    const draft = await ai.draftReply(post);
-    if (draft.skip) throw Object.assign(new Error(`Модель предлагает не отвечать: ${draft.reason}`), { status: 422 });
-    const d = createDraft(post, draft);
-    app.log('draft', `Черновик для @${wp.username} (отслеживаемый аккаунт)`, { draftId: d.id });
-    return d;
+    if (!wp) throw fail(404, 'Пост не найден, обновите список');
+    return draftForPost({ id: wp.id, username: wp.username, text: wp.text, permalink: wp.permalink, timestamp: wp.postedAt, source: 'watch' }, 'отслеживаемый аккаунт');
+  }
+
+  /** Черновик по ссылке на пост и его тексту (пост человек нашёл сам). */
+  async function draftFromLink({ url, text }) {
+    const link = parsePostLink(url);
+    if (!link || !link.id) throw fail(400, 'Нужна ссылка на пост вида https://www.threads.com/@имя/post/…');
+    const t = String(text || '').trim();
+    if (t.length < 3) throw fail(400, 'Вставьте текст поста — по нему агент пишет ответ');
+    return draftForPost({ id: link.id, username: link.username, text: t.slice(0, 2000), permalink: link.permalink, timestamp: null, source: 'manual' }, 'по ссылке');
   }
 
   const status = () => ({ searchRunning, mentionsRunning, watchRunning });
 
-  return { runSearch, runMentions, runWatch, draftForWatchPost, publish, status };
+  return { runSearch, runMentions, runWatch, draftForWatchPost, draftFromLink, publish, status };
 }
